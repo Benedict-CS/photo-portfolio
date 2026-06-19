@@ -2,7 +2,6 @@
 export const prerender = false;
 import Layout from '~/layouts/Layout.astro';
 import TopBar from '~/components/TopBar.astro';
-import Lightbox from '~/components/Lightbox.astro';
 import PreviewPanel from '~/components/PreviewPanel.astro';
 import { getPhotos } from '~/lib/photos';
 
@@ -20,19 +19,18 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
         <button id="mode-markers" class="map-mode-btn active" title="散點模式">📍</button>
         <button id="mode-routes" class="map-mode-btn" title="旅程路線(同國家連續 7 天內自動連線)">⚡</button>
       </div>
-      <div id="time-slider">
+      <button id="ts-toggle" type="button" title="時間軸">🕐</button>
+      <div id="time-slider" hidden>
         <div class="ts-labels">
           <span id="ts-from">—</span>
           <span id="ts-active">所有時間</span>
           <span id="ts-to">—</span>
         </div>
         <input id="ts-range" type="range" min="0" max="100" value="100" step="1" />
-        <div class="ts-help">拖滑桿 → 只顯示該時間點之前的照片</div>
       </div>
       <PreviewPanel />
     </main>
   </div>
-  <Lightbox />
 </Layout>
 
 <style is:global>
@@ -62,26 +60,49 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   .map-mode-btn:hover { background: #f3f4f6; }
   .map-mode-btn.active { background: var(--accent); color: white; }
 
-  #time-slider {
+  #ts-toggle {
     position: absolute;
     top: 14px;
-    left: 50%;
-    transform: translateX(-50%);
+    right: 70px;        /* sit left of the leaflet zoom +/- column */
     z-index: 1000;
-    background: rgba(255,255,255,0.95);
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: none;
+    background: white;
+    cursor: pointer;
+    font-size: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.16);
+    transition: background 0.15s;
+  }
+  #ts-toggle:hover { background: #f3f4f6; }
+  #ts-toggle.active { background: var(--accent); color: white; }
+
+  #time-slider {
+    position: absolute;
+    top: 56px;
+    right: 70px;
+    z-index: 1000;
+    background: rgba(255,255,255,0.96);
     backdrop-filter: blur(6px);
-    border-radius: 12px;
-    padding: 10px 18px;
-    box-shadow: 0 4px 18px rgba(0,0,0,0.12);
-    width: min(520px, calc(100% - 28px));
+    border-radius: 10px;
+    padding: 10px 14px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.16);
+    width: min(360px, calc(100vw - 90px));
     box-sizing: border-box;
+    animation: ts-slide-in 0.18s ease-out;
+  }
+  #time-slider[hidden] { display: none; }
+  @keyframes ts-slide-in {
+    from { opacity: 0; transform: translateY(-6px); }
+    to { opacity: 1; transform: translateY(0); }
   }
   #time-slider .ts-labels {
     display: flex;
     justify-content: space-between;
     font-size: 11px;
     color: var(--muted);
-    margin-bottom: 4px;
+    margin-bottom: 6px;
   }
   #time-slider .ts-active {
     font-weight: 600;
@@ -90,12 +111,6 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   #time-slider input[type="range"] {
     width: 100%;
     accent-color: var(--accent);
-  }
-  #time-slider .ts-help {
-    font-size: 10px;
-    color: var(--muted);
-    margin-top: 2px;
-    text-align: center;
   }
 
   /* Trip route polyline */
@@ -255,6 +270,16 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   const tsRange = document.getElementById('ts-range');
   if (tsFrom) tsFrom.textContent = minDate || '—';
   if (tsTo) tsTo.textContent = maxDate || '—';
+
+  // Slider visibility — collapsed by default, click 🕐 to toggle.
+  const tsToggle = document.getElementById('ts-toggle');
+  const tsPanel = document.getElementById('time-slider');
+  tsToggle?.addEventListener('click', () => {
+    if (!tsPanel) return;
+    const showing = !tsPanel.hidden;
+    tsPanel.hidden = showing;
+    tsToggle.classList.toggle('active', !showing);
+  });
 
   let timeFilter = 100; // 0–100, percent of timeline included (from min to that point)
   function dateAtSliderValue(val) {

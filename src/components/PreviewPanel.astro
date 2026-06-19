@@ -53,9 +53,8 @@
   panel.querySelector('.close')!.addEventListener('click', close);
   hero.addEventListener('click', () => {
     if (!currentPhoto) return;
-    window.dispatchEvent(new CustomEvent('lightbox:open', {
-      detail: { src: currentPhoto.thumbs.l, caption: '' },
-    }));
+    // Single source of truth — same detail page everywhere.
+    window.location.href = `/photos/${currentPhoto.id}`;
   });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && panel.classList.contains('show')) close();

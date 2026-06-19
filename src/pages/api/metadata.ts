@@ -68,8 +68,15 @@ export const DELETE: APIRoute = async ({ request }) => {
 export const POST: APIRoute = async ({ request }) => {
   if (!checkAuth(request)) return unauthorized();
   try {
-    const body = await request.json();
+    const body = await request.json().catch(() => ({}));
     const { path: p, title, album, description, lat, lon, datetime, favorite, paths } = body;
+    // Reject silently-empty requests with a clear 400 instead of a 500.
+    if (!p && !Array.isArray(paths)) {
+      return new Response(JSON.stringify({ ok: false, error: 'path or paths required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
 
     // Batch mode: { paths: ["a", "b"], album: "Tokyo trip" } updates many at once.
     const patch = {
@@ -91,7 +98,6 @@ export const POST: APIRoute = async ({ request }) => {
       });
     }
 
-    if (!p) throw new Error('path required');
     const updated = await updatePhoto(p, patch);
     if (!updated) {
       return new Response(JSON.stringify({ ok: false, error: 'photo not found' }), {
