@@ -2,7 +2,6 @@
 export const prerender = false;
 import Layout from '~/layouts/Layout.astro';
 import TopBar from '~/components/TopBar.astro';
-import Lightbox from '~/components/Lightbox.astro';
 import { getPhotos, type PhotoView as Photo } from '~/lib/photos';
 
 const photos = await getPhotos();
@@ -131,7 +130,6 @@ const sectionId = (country: string) =>
       <button id="batch-clear" type="button">清除</button>
     </div>
   </div>
-  <Lightbox />
 </Layout>
 
 <style is:global>
@@ -293,7 +291,7 @@ const sectionId = (country: string) =>
     overflow: hidden;
     border-radius: 2px;
     background: #e5e5e5;
-    cursor: zoom-in;
+    cursor: pointer;
     flex-shrink: 0;
     transition: transform 0.18s;
   }
@@ -616,29 +614,10 @@ const sectionId = (country: string) =>
       return;
     }
 
-    const img = target.closest('img') as HTMLImageElement | null;
-    if (!img) return;
-    const allImgs = Array.from(
-      document.querySelectorAll<HTMLImageElement>('.timeline-feed .justified-cell img')
-    );
-    const items = allImgs.map((el) => {
-      const c = el.closest('.justified-cell') as HTMLElement | null;
-      return {
-        src: el.dataset.large || el.src,
-        id: c?.dataset.id || '',
-        path: c?.dataset.path || '',
-        editable: c?.dataset.editable === '1',
-        country: c?.dataset.country || '',
-        countryCode: c?.dataset.countryCode || '',
-        datetime: el.dataset.datetime || '',
-        camera: c?.dataset.camera || '',
-        favorite: c?.dataset.favorite === '1',
-      };
-    });
-    const index = allImgs.indexOf(img);
-    window.dispatchEvent(new CustomEvent('lightbox:open', {
-      detail: { items, index: Math.max(0, index) },
-    }));
+    // Single source of truth for "view a photo" → the detail page.
+    // Same UI everywhere (info bar, ⭐, ← →, edit, delete, etc.).
+    const cellId = cell?.dataset.id;
+    if (cellId) window.location.href = `/photos/${cellId}`;
   });
 
   document.getElementById('batch-clear')?.addEventListener('click', () => {
