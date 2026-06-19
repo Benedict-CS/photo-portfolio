@@ -312,8 +312,9 @@ function flag(code: string) {
     justify-content: center;
     backdrop-filter: blur(4px);
   }
-  /* When hidden the browser's default [hidden] { display: none } applies —
-     no overlay, no chance of intercepting clicks on the page underneath. */
+  /* The class selector above outranks the UA's [hidden] { display: none },
+     so we must repeat hidden ourselves with !important. */
+  .loc-modal[hidden] { display: none !important; }
   .loc-modal-inner {
     background: white;
     color: var(--text);
