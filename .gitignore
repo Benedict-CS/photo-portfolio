@@ -9,3 +9,7 @@ backups/
 # them in git makes Cloudflare Pages cold builds fast (no re-download from
 # Nextcloud). Toggle this if/when the repo gets too big.
 # public/thumbs/
+_d.html
+_inline.js
+_*.html
+_*.js
