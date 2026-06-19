@@ -82,7 +82,7 @@ const sectionId = (country: string) =>
 
       <div class="timeline-feed">
         <div class="select-hint edit-only">
-          <kbd>Ctrl/Cmd</kbd> + 點選 多選照片 · <kbd>Shift</kbd> + 點選 範圍選 · 選好後底部出現「設定相簿」
+          <kbd>Ctrl/Cmd</kbd> + 點選 多選照片 · <kbd>Shift</kbd> + 點選 範圍選 · 選好後底部出現「⭐ 加入收藏」
         </div>
         {countries.length === 0 ? (
           <div class="empty-state">
@@ -123,7 +123,7 @@ const sectionId = (country: string) =>
     </main>
     <div id="batch-bar" class="edit-only">
       <span class="count">已選 0 張</span>
-      <button id="batch-album" type="button">設定相簿</button>
+      <button id="batch-favorite" type="button">⭐ 加入收藏</button>
       <button id="batch-clear" type="button">清除</button>
     </div>
   </div>
@@ -649,26 +649,22 @@ const sectionId = (country: string) =>
     return res;
   }
 
-  document.getElementById('batch-album')?.addEventListener('click', async () => {
+  document.getElementById('batch-favorite')?.addEventListener('click', async () => {
     if (selected.size === 0) return;
-    const album = window.prompt(`為已選的 ${selected.size} 張照片設定相簿名稱:`);
-    if (album === null) return;
     try {
       const res = await authedFetch('/api/metadata', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ paths: [...selected], album }),
+        body: JSON.stringify({ paths: [...selected], favorite: true }),
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'batch failed');
       window.dispatchEvent(new CustomEvent('toast:show', {
-        detail: { type: 'success', message: `✓ ${data.count} 張已設為「${album || '(無相簿)'}」` },
+        detail: { type: 'success', message: `⭐ ${data.count} 張已加入收藏` },
       }));
-      // Clear selection then reload to reflect grouping.
       document.querySelectorAll('.justified-cell.selected').forEach((c) => c.classList.remove('selected'));
       selected.clear();
       syncBatchBar();
-      setTimeout(() => window.location.reload(), 700);
     } catch (err: any) {
       window.dispatchEvent(new CustomEvent('toast:show', {
         detail: { type: 'error', message: `失敗:${err.message || err}` },

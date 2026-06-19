@@ -91,12 +91,6 @@ function flag(code: string) {
         <span>{photo.country || '—'}</span>
         <span class="dot">·</span>
         <span>{prettyDate || '時間不詳'}</span>
-        {photo.album && (
-          <>
-            <span class="dot">·</span>
-            <span class="album-pill">{photo.album}</span>
-          </>
-        )}
         {photo.camera && (
           <>
             <span class="dot">·</span>
