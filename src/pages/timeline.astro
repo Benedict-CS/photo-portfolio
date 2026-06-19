@@ -555,7 +555,7 @@ const sectionId = (country: string) =>
   }
 
   setupGrids();
-  let resizeT: any;
+  let resizeT;
   window.addEventListener('resize', () => {
     clearTimeout(resizeT);
     resizeT = setTimeout(setupGrids, 150);
@@ -578,11 +578,11 @@ const sectionId = (country: string) =>
     else { selected.delete(p); cell.classList.remove('selected'); }
   }
 
-  let lastClickedCell: HTMLElement | null = null;
+  let lastClickedCell = null;
 
   document.querySelector('.timeline-feed')?.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
-    const cell = target.closest('.justified-cell') as HTMLElement | null;
+    const cell = target.closest('.justified-cell');
     if (!cell) return;
 
     // Cmd/Ctrl-click → toggle single selection (no lightbox)
@@ -628,7 +628,7 @@ const sectionId = (country: string) =>
 
   // Inline auth helper (same as the detail page).
   const TOKEN_KEY = 'photo-admin-token';
-  async function authedFetch(url: string, init: RequestInit = {}): Promise<Response> {
+  async function authedFetch(url: string, init: RequestInit = {}) {
     async function go(token: string) {
       const headers = new Headers(init.headers || {});
       if (token) headers.set('Authorization', `Bearer ${token}`);
@@ -636,7 +636,7 @@ const sectionId = (country: string) =>
     }
     let res = await go(localStorage.getItem(TOKEN_KEY) || '');
     if (res.status !== 401) return res;
-    const entered = await (window as any).promptPassword?.('需要管理員密碼才能編輯');
+    const entered = await (window).promptPassword?.('需要管理員密碼才能編輯');
     if (!entered) return res;
     localStorage.setItem(TOKEN_KEY, entered);
     res = await go(entered);

@@ -18,12 +18,12 @@
 
 <script>
   const panel = document.getElementById('preview')!;
-  const hero = document.getElementById('preview-hero') as HTMLImageElement;
+  const hero = document.getElementById('preview-hero');
   const datetimeEl = document.getElementById('preview-datetime')!;
-  const downloadEl = document.getElementById('preview-download') as HTMLAnchorElement;
-  const editEl = document.getElementById('preview-edit') as HTMLAnchorElement;
+  const downloadEl = document.getElementById('preview-download');
+  const editEl = document.getElementById('preview-edit');
 
-  let currentPhoto: any = null;
+  let currentPhoto = null;
 
   function open(photo: any) {
     currentPhoto = photo;
@@ -60,6 +60,6 @@
     if (e.key === 'Escape' && panel.classList.contains('show')) close();
   });
 
-  window.addEventListener('preview:open', (e: any) => open(e.detail.photo));
+  window.addEventListener('preview:open', (e) => open(e.detail.photo));
   window.addEventListener('preview:close', close);
 </script>

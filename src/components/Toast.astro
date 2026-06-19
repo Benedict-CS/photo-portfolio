@@ -60,7 +60,7 @@
       setTimeout(() => el.remove(), 250);
     }, ttl);
   }
-  window.addEventListener('toast:show', (e: any) => {
+  window.addEventListener('toast:show', (e) => {
     const d = e.detail || {};
     showToast(d.type || 'info', d.message || '', d.ttl);
   });

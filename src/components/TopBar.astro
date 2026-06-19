@@ -68,7 +68,7 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
 
 <script>
   const TOKEN_KEY = 'photo-admin-token';
-  const btn = document.getElementById('auth-btn') as HTMLButtonElement;
+  const btn = document.getElementById('auth-btn');
   const label = btn?.querySelector('.auth-label') as HTMLElement;
 
   function refresh() {
@@ -97,7 +97,7 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
       }
       return;
     }
-    const pw = await (window as any).promptPassword('請輸入管理員密碼');
+    const pw = await (window).promptPassword('請輸入管理員密碼');
     if (!pw) return;
     // Verify by hitting an auth-only route. Pass nothing → 400 (authed) or 401 (not).
     const r = await fetch('/api/metadata', {

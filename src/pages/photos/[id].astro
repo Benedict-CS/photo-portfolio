@@ -579,7 +579,7 @@ function flag(code: string) {
     }
     let res = await go(localStorage.getItem(TOKEN_KEY) || '');
     if (res.status !== 401) return res;
-    const entered = await (window as any).promptPassword?.('需要管理員密碼才能編輯');
+    const entered = await (window).promptPassword?.('需要管理員密碼才能編輯');
     if (!entered) return res;
     localStorage.setItem(TOKEN_KEY, entered);
     res = await go(entered);
