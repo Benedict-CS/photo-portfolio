@@ -18,6 +18,8 @@
   </button>
   <img id="lightbox-img" alt="" />
   <div class="lb-counter" id="lightbox-counter"></div>
+  <div class="lb-info" id="lightbox-info"></div>
+  <button id="lightbox-fav" class="lb-fav" type="button" title="收藏 (F)" aria-pressed="false">☆</button>
   <a id="lightbox-detail" class="lb-detail edit-only" href="#" title="開詳細頁 (編輯位置/日期)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     <span>編輯位置/日期</span>
@@ -32,9 +34,19 @@
   const nextBtn = lb.querySelector('.lb-next') as HTMLButtonElement;
   const closeBtn = lb.querySelector('.lb-close') as HTMLButtonElement;
 
-  let srcs: string[] = [];
-  let ids: string[] = [];          // photo IDs parallel to srcs (for "→ detail page")
-  let editable: boolean[] = [];    // per-photo: is anything editable?
+  /** Per-photo metadata for the info overlay + ⭐ + edit link. */
+  interface LbPhoto {
+    src: string;
+    id?: string;
+    path?: string;
+    editable?: boolean;
+    country?: string;
+    countryCode?: string;
+    datetime?: string;
+    camera?: string;
+    favorite?: boolean;
+  }
+  let items: LbPhoto[] = [];
   let idx = 0;
 
   // ---- Zoom & pan state ----
@@ -53,18 +65,44 @@
     applyTransform();
   }
 
+  function flag(code: string) {
+    if (!code || code.length !== 2) return '📍';
+    return String.fromCodePoint(
+      ...[...code.toLowerCase()].map((c) => 0x1f1e6 + (c.charCodeAt(0) - 97))
+    );
+  }
+
+  function renderInfo(it: LbPhoto) {
+    const info = document.getElementById('lightbox-info')!;
+    const bits: string[] = [];
+    if (it.country) {
+      bits.push(`<span class="flag">${flag(it.countryCode || '')}</span><span>${it.country}</span>`);
+    }
+    if (it.datetime) bits.push(`<span>${it.datetime.slice(0, 10)}</span>`);
+    if (it.camera) bits.push(`<span>📷 ${it.camera}</span>`);
+    // Use the same "· dot" separator as the detail page info bar.
+    info.innerHTML = bits.join('<span class="dot">·</span>');
+    info.style.display = bits.length ? '' : 'none';
+
+    const fav = document.getElementById('lightbox-fav') as HTMLButtonElement;
+    fav.textContent = it.favorite ? '⭐' : '☆';
+    fav.classList.toggle('on', !!it.favorite);
+    fav.setAttribute('aria-pressed', String(!!it.favorite));
+    fav.style.display = it.path ? '' : 'none';
+  }
+
   function show(i: number) {
-    if (i < 0 || i >= srcs.length) return;
+    if (i < 0 || i >= items.length) return;
     idx = i;
-    resetTransform(); // each new photo starts at 1:1
-    const newSrc = srcs[i];
+    resetTransform();
+    const it = items[i];
+    const newSrc = it.src;
     if (img.src && img.src !== newSrc) {
       img.classList.add('lb-fading');
       const onLoaded = () => {
         img.classList.remove('lb-fading');
         img.removeEventListener('load', onLoaded);
       };
-      // Preload then swap so the fade-out and fade-in chain smoothly.
       const preloader = new Image();
       preloader.onload = () => {
         img.src = newSrc;
@@ -74,39 +112,78 @@
     } else {
       img.src = newSrc;
     }
-    counter.textContent = srcs.length > 1 ? `${i + 1} / ${srcs.length}` : '';
+    counter.textContent = items.length > 1 ? `${i + 1} / ${items.length}` : '';
     prevBtn.style.visibility = i > 0 ? 'visible' : 'hidden';
-    nextBtn.style.visibility = i < srcs.length - 1 ? 'visible' : 'hidden';
+    nextBtn.style.visibility = i < items.length - 1 ? 'visible' : 'hidden';
     const detail = document.getElementById('lightbox-detail') as HTMLAnchorElement;
-    // Only show the edit-link for photos that still have something editable.
-    // Photos with full EXIF (lat + lon + datetime, no overrides) are
-    // authoritative — no UI should suggest editing.
-    if (ids[i] && editable[i]) {
-      detail.href = `/photos/${ids[i]}?pin=1`;
+    if (it.id && it.editable) {
+      detail.href = `/photos/${it.id}?pin=1`;
       detail.style.display = '';
     } else {
       detail.style.display = 'none';
     }
+    renderInfo(it);
   }
 
-  function open(list: string[], startIndex = 0, idList: string[] = [], editableList: boolean[] = []) {
+  function open(list: LbPhoto[], startIndex = 0) {
     if (!list.length) return;
-    srcs = list;
-    ids = idList;
-    editable = editableList;
+    items = list;
     show(startIndex);
     lb.classList.add('show');
     lb.setAttribute('aria-hidden', 'false');
   }
 
+  // ---- ⭐ Favorite toggle (only when path provided + logged in) ----
+  const TOKEN_KEY = 'photo-admin-token';
+  async function toggleFavorite() {
+    const it = items[idx];
+    if (!it || !it.path) return;
+    const next = !it.favorite;
+    const fav = document.getElementById('lightbox-fav') as HTMLButtonElement;
+    // Optimistic
+    it.favorite = next;
+    fav.textContent = next ? '⭐' : '☆';
+    fav.classList.toggle('on', next);
+    fav.setAttribute('aria-pressed', String(next));
+    try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const tok = localStorage.getItem(TOKEN_KEY);
+      if (tok) headers['Authorization'] = `Bearer ${tok}`;
+      const res = await fetch('/api/metadata', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ path: it.path, favorite: next }),
+      });
+      if (res.status === 401) throw new Error('需要登入');
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'save failed');
+      window.dispatchEvent(new CustomEvent('toast:show', {
+        detail: { type: 'success', message: next ? '⭐ 加入收藏' : '已取消收藏' },
+      }));
+    } catch (err: any) {
+      // Rollback
+      it.favorite = !next;
+      fav.textContent = !next ? '⭐' : '☆';
+      fav.classList.toggle('on', !next);
+      fav.setAttribute('aria-pressed', String(!next));
+      window.dispatchEvent(new CustomEvent('toast:show', {
+        detail: { type: 'error', message: `失敗:${err.message || err}` },
+      }));
+    }
+  }
+  document.getElementById('lightbox-fav')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    toggleFavorite();
+  });
+
   function close() {
     lb.classList.remove('show');
     lb.setAttribute('aria-hidden', 'true');
     img.src = '';
-    srcs = [];
+    items = [];
   }
 
-  function next() { if (idx < srcs.length - 1) show(idx + 1); }
+  function next() { if (idx < items.length - 1) show(idx + 1); }
   function prev() { if (idx > 0) show(idx - 1); }
 
   prevBtn.addEventListener('click', (e) => { e.stopPropagation(); prev(); });
@@ -125,16 +202,23 @@
 
   window.addEventListener('lightbox:open', (e: any) => {
     const d = e.detail || {};
-    if (Array.isArray(d.srcs)) {
-      open(
-        d.srcs,
-        d.index ?? 0,
-        Array.isArray(d.ids) ? d.ids : [],
-        Array.isArray(d.editable) ? d.editable : []
-      );
-    } else if (d.src) {
-      open([d.src], 0, d.id ? [d.id] : [], [d.editable !== false]);
+    // New shape: { items: LbPhoto[], index }
+    if (Array.isArray(d.items)) {
+      open(d.items, d.index ?? 0);
+      return;
     }
+    // Legacy: { srcs, ids, editable, index }
+    if (Array.isArray(d.srcs)) {
+      const list = d.srcs.map((s: string, i: number) => ({
+        src: s,
+        id: d.ids?.[i],
+        editable: d.editable?.[i],
+      }));
+      open(list, d.index ?? 0);
+      return;
+    }
+    // Legacy single: { src, caption }
+    if (d.src) open([{ src: d.src }], 0);
   });
 
   // ---- Wheel = zoom toward cursor ----

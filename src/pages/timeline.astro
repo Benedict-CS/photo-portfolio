@@ -112,6 +112,10 @@ const sectionId = (country: string) =>
                       placeholder: p.placeholder,
                       datetime: p.datetime,
                       editable: p.editable,
+                      country: p.country,
+                      countryCode: p.countryCode,
+                      camera: p.camera,
+                      favorite: p.favorite,
                     })))}
                   ></div>
                 </div>
@@ -476,6 +480,7 @@ const sectionId = (country: string) =>
       img.alt = '';
       img.dataset.large = p.thumb_l;
       img.dataset.medium = p.thumb_m;
+      img.dataset.datetime = p.datetime || '';
       img.addEventListener('load', function once() {
         img.classList.add('loaded');
         img.removeEventListener('load', once);
@@ -487,6 +492,10 @@ const sectionId = (country: string) =>
         }
       });
       cell.dataset.path = p.path || '';
+      cell.dataset.country = p.country || '';
+      cell.dataset.countryCode = p.countryCode || '';
+      cell.dataset.camera = p.camera || '';
+      cell.dataset.favorite = p.favorite ? '1' : '0';
       const dateTag = document.createElement('div');
       dateTag.className = 'date-tag';
       dateTag.textContent = (p.datetime || '').slice(0, 10);
@@ -612,13 +621,23 @@ const sectionId = (country: string) =>
     const allImgs = Array.from(
       document.querySelectorAll<HTMLImageElement>('.timeline-feed .justified-cell img')
     );
-    const srcs = allImgs.map((el) => el.dataset.large || el.src);
-    const cells = allImgs.map((el) => el.closest('.justified-cell') as HTMLElement | null);
-    const ids = cells.map((c) => c?.dataset.id || '');
-    const editableFlags = cells.map((c) => c?.dataset.editable === '1');
+    const items = allImgs.map((el) => {
+      const c = el.closest('.justified-cell') as HTMLElement | null;
+      return {
+        src: el.dataset.large || el.src,
+        id: c?.dataset.id || '',
+        path: c?.dataset.path || '',
+        editable: c?.dataset.editable === '1',
+        country: c?.dataset.country || '',
+        countryCode: c?.dataset.countryCode || '',
+        datetime: el.dataset.datetime || '',
+        camera: c?.dataset.camera || '',
+        favorite: c?.dataset.favorite === '1',
+      };
+    });
     const index = allImgs.indexOf(img);
     window.dispatchEvent(new CustomEvent('lightbox:open', {
-      detail: { srcs, ids, editable: editableFlags, index: Math.max(0, index) },
+      detail: { items, index: Math.max(0, index) },
     }));
   });
 
