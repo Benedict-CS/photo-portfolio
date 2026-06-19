@@ -18,8 +18,8 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
       <div id="map-toolbar">
         <button id="mode-markers" class="map-mode-btn active" title="散點模式">📍</button>
         <button id="mode-routes" class="map-mode-btn" title="旅程路線(同國家連續 7 天內自動連線)">⚡</button>
+        <button id="ts-toggle" class="map-mode-btn" type="button" title="時間軸">🕐</button>
       </div>
-      <button id="ts-toggle" type="button" title="時間軸">🕐</button>
       <div id="time-slider" hidden>
         <div class="ts-labels">
           <span id="ts-from">—</span>
@@ -60,41 +60,24 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   .map-mode-btn:hover { background: #f3f4f6; }
   .map-mode-btn.active { background: var(--accent); color: white; }
 
-  #ts-toggle {
-    position: absolute;
-    top: 14px;
-    right: 70px;        /* sit left of the leaflet zoom +/- column */
-    z-index: 1000;
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
-    border: none;
-    background: white;
-    cursor: pointer;
-    font-size: 16px;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.16);
-    transition: background 0.15s;
-  }
-  #ts-toggle:hover { background: #f3f4f6; }
-  #ts-toggle.active { background: var(--accent); color: white; }
-
+  /* Time slider lives next to the markers / routes mode buttons (bottom-left). */
   #time-slider {
     position: absolute;
-    top: 56px;
-    right: 70px;
+    bottom: 72px;            /* sit above the toolbar pill */
+    left: 14px;
     z-index: 1000;
     background: rgba(255,255,255,0.96);
     backdrop-filter: blur(6px);
     border-radius: 10px;
     padding: 10px 14px;
     box-shadow: 0 4px 18px rgba(0,0,0,0.16);
-    width: min(360px, calc(100vw - 90px));
+    width: min(320px, calc(100vw - 90px));
     box-sizing: border-box;
     animation: ts-slide-in 0.18s ease-out;
   }
   #time-slider[hidden] { display: none; }
   @keyframes ts-slide-in {
-    from { opacity: 0; transform: translateY(-6px); }
+    from { opacity: 0; transform: translateY(8px); }
     to { opacity: 1; transform: translateY(0); }
   }
   #time-slider .ts-labels {
