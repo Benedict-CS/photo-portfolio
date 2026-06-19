@@ -1,0 +1,480 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import TopBar from '~/components/TopBar.astro';
+import Lightbox from '~/components/Lightbox.astro';
+import { getPhotos, type Photo } from '~/lib/photos';
+
+const photos = await getPhotos();
+
+// --- Group: country -> "YYYY-MM" -> Photo[] ---
+type MonthGroup = { ym: string; monthLabel: string; photos: Photo[] };
+type CountryGroup = { country: string; countryCode: string; count: number; months: MonthGroup[] };
+
+const byCountry = new Map<string, CountryGroup>();
+for (const p of photos) {
+  const ckey = p.country || '未知';
+  let g = byCountry.get(ckey);
+  if (!g) {
+    g = { country: ckey, countryCode: p.countryCode, count: 0, months: [] };
+    byCountry.set(ckey, g);
+  }
+  g.count++;
+  const ym = (p.datetime || '').slice(0, 7) || 'unknown';
+  let m = g.months.find((x) => x.ym === ym);
+  if (!m) {
+    const monthLabel = ym === 'unknown'
+      ? '未知時間'
+      : `${ym.slice(0, 4)}年${parseInt(ym.slice(5, 7), 10)}月`;
+    m = { ym, monthLabel, photos: [] };
+    g.months.push(m);
+  }
+  m.photos.push(p);
+}
+
+// Sort by photo count descending, but always pin 未定位 to the end so it
+// doesn't break up the "real" countries in the rail.
+const countries = [...byCountry.values()].sort((a, b) => {
+  if (a.country === '未定位') return 1;
+  if (b.country === '未定位') return -1;
+  return b.count - a.count;
+});
+for (const c of countries) {
+  c.months.sort((a, b) => b.ym.localeCompare(a.ym));
+  for (const m of c.months) m.photos.sort((a, b) => b.datetime.localeCompare(a.datetime));
+}
+
+function flagEmoji(code: string) {
+  // 📍 signals "needs a location pinned" for the 未定位 bucket.
+  if (!code || code.length !== 2) return '📍';
+  return String.fromCodePoint(
+    ...[...code.toLowerCase()].map((c) => 0x1f1e6 + (c.charCodeAt(0) - 97))
+  );
+}
+
+const sectionId = (country: string) =>
+  'c-' + country.replace(/[^\w一-鿿]/g, '-');
+---
+<Layout title="📸 Photo Portfolio · Timeline">
+  <div class="app-shell">
+    <TopBar photos={photos} active="timeline" />
+    <main class="timeline-main">
+      <button id="rail-toggle" type="button" aria-label="切換國家欄" title="切換國家欄 (`)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <aside class="country-rail" aria-label="國家導覽">
+        {countries.map((c) => (
+          <a class="rail-item" href={`#${sectionId(c.country)}`} data-country={c.country} title={c.country}>
+            <span class="rail-flag">{flagEmoji(c.countryCode)}</span>
+            <span class="rail-name">{c.country}</span>
+            <span class="rail-code">{c.countryCode ? c.countryCode.toUpperCase() : '未'}</span>
+            <span class="rail-count">{c.count}</span>
+          </a>
+        ))}
+      </aside>
+
+      <div class="timeline-feed">
+        {countries.length === 0 ? (
+          <div class="empty-state">
+            <p>沒有照片。請在 Nextcloud 分享資料夾裡上傳含 GPS 的 JPEG。</p>
+          </div>
+        ) : (
+          countries.map((c) => (
+            <section class="country-section" id={sectionId(c.country)} data-country={c.country}>
+              <header class="country-header">
+                <div class="hero-flag">{flagEmoji(c.countryCode)}</div>
+                <div class="hero-meta">
+                  <h2 class="hero-name">{c.country}</h2>
+                  <div class="hero-sub">{c.count} 張</div>
+                </div>
+              </header>
+              {c.months.map((m) => (
+                <div class="month-block">
+                  <h3 class="month-label">{m.monthLabel}<span class="month-count"> · {m.photos.length}</span></h3>
+                  <div
+                    class="justified-grid"
+                    data-photos={JSON.stringify(m.photos.map((p) => ({
+                      id: p.id,
+                      thumb_m: p.thumbs.m,
+                      thumb_l: p.thumbs.l,
+                      placeholder: p.placeholder,
+                      datetime: p.datetime,
+                    })))}
+                  ></div>
+                </div>
+              ))}
+            </section>
+          ))
+        )}
+      </div>
+    </main>
+  </div>
+  <Lightbox />
+</Layout>
+
+<style is:global>
+  .timeline-main {
+    flex: 1;
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    min-height: 0;
+    transition: grid-template-columns 0.22s ease;
+    position: relative;
+  }
+  .timeline-main.rail-collapsed { grid-template-columns: 56px 1fr; }
+
+  #rail-toggle {
+    position: absolute;
+    top: 14px;
+    left: 166px;
+    z-index: 1100;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    cursor: pointer;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    transition: left 0.22s ease, transform 0.22s ease, color 0.15s;
+  }
+  #rail-toggle:hover { color: var(--text); background: #f5f5f5; }
+  .timeline-main.rail-collapsed #rail-toggle {
+    left: 42px;
+    transform: rotate(180deg);
+  }
+
+  /* ---- Left country rail ---- */
+  .country-rail {
+    border-right: 1px solid var(--border);
+    padding: 24px 0;
+    overflow-y: auto;
+    background: var(--panel);
+  }
+  .rail-item {
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 18px;
+    color: var(--text);
+    border-left: 3px solid transparent;
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .rail-item:hover { background: #f5f5f5; text-decoration: none; }
+  .rail-item.active {
+    background: var(--accent-bg);
+    border-left-color: var(--accent);
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .rail-flag { font-size: 20px; line-height: 1; }
+  .rail-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .rail-code { display: none; font-size: 11px; font-weight: 600; color: var(--muted); }
+  .rail-count {
+    font-size: 11px;
+    color: var(--muted);
+    background: #f0f0f0;
+    padding: 1px 7px;
+    border-radius: 999px;
+  }
+  .rail-item.active .rail-count { background: var(--accent); color: white; }
+
+  /* ---- Collapsed (mini) rail: country code only ---- */
+  .timeline-main.rail-collapsed .rail-item {
+    grid-template-columns: 1fr;
+    justify-items: center;
+    padding: 10px 4px;
+    border-left-width: 0;
+    border-right: 3px solid transparent;
+    font-weight: 600;
+  }
+  .timeline-main.rail-collapsed .rail-item.active {
+    border-left-width: 0;
+    border-right-color: var(--accent);
+  }
+  .timeline-main.rail-collapsed .rail-flag,
+  .timeline-main.rail-collapsed .rail-name,
+  .timeline-main.rail-collapsed .rail-count { display: none; }
+  .timeline-main.rail-collapsed .rail-code {
+    display: block;
+    font-size: 13px;
+    color: var(--text);
+  }
+  .timeline-main.rail-collapsed .rail-item.active .rail-code { color: var(--accent); }
+
+  /* ---- Feed ---- */
+  .timeline-feed {
+    overflow-y: auto;
+    padding: 32px 48px 120px;
+    scroll-behavior: smooth;
+    background: var(--bg);
+  }
+
+  .country-section {
+    margin-bottom: 64px;
+    scroll-margin-top: 20px;
+  }
+  .country-section:last-child { margin-bottom: 40px; }
+
+  .country-header {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 18px;
+    align-items: center;
+    margin-bottom: 24px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  .hero-flag {
+    font-size: 56px;
+    line-height: 1;
+    width: 64px;
+    text-align: center;
+  }
+  .hero-meta { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .hero-name {
+    font-size: 36px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    margin: 0;
+    line-height: 1.1;
+  }
+  .hero-sub {
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  .month-block {
+    margin-bottom: 32px;
+    content-visibility: auto;
+    contain-intrinsic-size: 1px 400px;
+  }
+  .month-label {
+    font-size: 13px;
+    color: var(--muted);
+    font-weight: 500;
+    margin: 0 0 12px;
+    letter-spacing: 0.02em;
+  }
+  .month-count { color: var(--muted); font-weight: 400; }
+
+  .justified-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+  .justified-cell {
+    position: relative;
+    overflow: hidden;
+    border-radius: 2px;
+    background: #e5e5e5;
+    cursor: zoom-in;
+    flex-shrink: 0;
+    transition: transform 0.18s;
+  }
+  .justified-cell:hover { transform: translateY(-2px); }
+  .justified-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    transition: transform 0.4s;
+  }
+  .justified-cell:hover img { transform: scale(1.04); }
+  .justified-cell .date-tag {
+    position: absolute;
+    bottom: 6px;
+    right: 6px;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    opacity: 0;
+    transition: opacity 0.15s;
+    pointer-events: none;
+    backdrop-filter: blur(4px);
+  }
+  .justified-cell:hover .date-tag { opacity: 1; }
+
+  .empty-state { padding: 80px 20px; text-align: center; color: var(--muted); }
+
+  @media (max-width: 720px) {
+    .timeline-main { grid-template-columns: 1fr; }
+    .country-rail {
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      padding: 8px 12px;
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+    }
+    .rail-item {
+      display: inline-flex;
+      grid-template-columns: none;
+      padding: 5px 11px;
+      border: 1px solid var(--border);
+      border-left-width: 1px;
+      border-radius: 999px;
+      flex-shrink: 0;
+    }
+    .rail-item.active {
+      border-color: var(--accent);
+      background: var(--accent-bg);
+    }
+    .timeline-feed { padding: 24px 16px 80px; }
+    .hero-flag { font-size: 40px; }
+    .hero-name { font-size: 28px; }
+  }
+</style>
+
+<script>
+  // ---- Country-rail collapse (persisted) ----
+  const RAIL_COLLAPSE_KEY = 'timeline-rail-collapsed';
+  const main = document.querySelector('.timeline-main') as HTMLElement;
+  const toggle = document.getElementById('rail-toggle');
+  if (main && localStorage.getItem(RAIL_COLLAPSE_KEY) === '1') {
+    main.classList.add('rail-collapsed');
+  }
+  toggle?.addEventListener('click', () => {
+    if (!main) return;
+    main.classList.toggle('rail-collapsed');
+    const collapsed = main.classList.contains('rail-collapsed');
+    localStorage.setItem(RAIL_COLLAPSE_KEY, collapsed ? '1' : '0');
+    setTimeout(() => setupGrids(), 250); // re-flow after transition
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === '`' && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
+      toggle?.click();
+    }
+  });
+
+  // ---- Justified row layout ----
+  const TARGET_ROW_HEIGHT = 220;
+  const ROW_GAP = 4;
+
+  function layoutGrid(container: HTMLElement, photos: any[]) {
+    container.innerHTML = '';
+    const width = container.clientWidth;
+    if (!width || !photos.length) return;
+
+    const cells: { p: any; ratio: number; el: HTMLDivElement; img: HTMLImageElement }[] = [];
+    photos.forEach((p) => {
+      const cell = document.createElement('div');
+      cell.className = 'justified-cell lqip';
+      cell.dataset.id = p.id;
+      if (p.placeholder) cell.style.backgroundImage = `url("${p.placeholder}")`;
+      const img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = p.thumb_m;
+      img.alt = '';
+      img.dataset.large = p.thumb_l;
+      img.addEventListener('load', () => img.classList.add('loaded'), { once: true });
+      const dateTag = document.createElement('div');
+      dateTag.className = 'date-tag';
+      dateTag.textContent = (p.datetime || '').slice(0, 10);
+      cell.append(img, dateTag);
+      container.append(cell);
+      cells.push({ p, ratio: 4 / 3, el: cell, img });
+    });
+
+    function reflow() {
+      let i = 0;
+      while (i < cells.length) {
+        let j = i;
+        let rowRatio = 0;
+        while (j < cells.length) {
+          rowRatio += cells[j].ratio;
+          const heightAt = (width - ROW_GAP * (j - i)) / rowRatio;
+          if (heightAt <= TARGET_ROW_HEIGHT) break;
+          j++;
+        }
+        if (j === cells.length) j--;
+        const usedRatio = cells.slice(i, j + 1).reduce((s, c) => s + c.ratio, 0);
+        const totalGap = ROW_GAP * (j - i);
+        const isLastIncomplete = j === cells.length - 1 && usedRatio < width / TARGET_ROW_HEIGHT - 0.3;
+        let h = isLastIncomplete ? TARGET_ROW_HEIGHT : (width - totalGap) / usedRatio;
+        h = Math.min(h, TARGET_ROW_HEIGHT * 1.3);
+        for (let k = i; k <= j; k++) {
+          const w = isLastIncomplete
+            ? h * cells[k].ratio
+            : (width - totalGap) * (cells[k].ratio / usedRatio);
+          cells[k].el.style.width = `${w}px`;
+          cells[k].el.style.height = `${h}px`;
+        }
+        i = j + 1;
+      }
+    }
+
+    reflow();
+    let pending = cells.length;
+    cells.forEach((c) => {
+      const done = () => {
+        if (c.img.naturalWidth) c.ratio = c.img.naturalWidth / c.img.naturalHeight;
+        if (--pending === 0) reflow();
+      };
+      if (c.img.complete) done();
+      else {
+        c.img.addEventListener('load', done, { once: true });
+        c.img.addEventListener('error', done, { once: true });
+      }
+    });
+  }
+
+  function setupGrids() {
+    document.querySelectorAll<HTMLElement>('.justified-grid').forEach((g) => {
+      const photos = JSON.parse(g.dataset.photos || '[]');
+      layoutGrid(g, photos);
+    });
+  }
+
+  setupGrids();
+  let resizeT: any;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeT);
+    resizeT = setTimeout(setupGrids, 150);
+  });
+
+  // Click handling:
+  //  - If the photo lives in the 未定位 section → jump straight to its detail
+  //    page (which auto-opens the location-pin modal). Lightbox would just
+  //    delay the action the user actually needs to take.
+  //  - Otherwise → open the lightbox at that photo's index in the full feed.
+  document.querySelector('.timeline-feed')?.addEventListener('click', (e) => {
+    const img = (e.target as HTMLElement).closest('img') as HTMLImageElement | null;
+    if (!img) return;
+    const section = img.closest('.country-section') as HTMLElement | null;
+    const cell = img.closest('.justified-cell') as HTMLElement | null;
+    if (section?.dataset.country === '未定位' && cell?.dataset.id) {
+      window.location.href = `/photos/${cell.dataset.id}?pin=1`;
+      return;
+    }
+    const allImgs = Array.from(
+      document.querySelectorAll<HTMLImageElement>('.timeline-feed .justified-cell img')
+    );
+    const srcs = allImgs.map((el) => el.dataset.large || el.src);
+    const ids = allImgs.map((el) => (el.closest('.justified-cell') as HTMLElement | null)?.dataset.id || '');
+    const index = allImgs.indexOf(img);
+    window.dispatchEvent(new CustomEvent('lightbox:open', {
+      detail: { srcs, ids, index: Math.max(0, index) },
+    }));
+  });
+
+  // ---- Active rail highlight via IntersectionObserver ----
+  const railItems = document.querySelectorAll<HTMLAnchorElement>('.rail-item');
+  const sections = document.querySelectorAll<HTMLElement>('.country-section');
+  const feed = document.querySelector('.timeline-feed') as HTMLElement;
+  if (feed && sections.length) {
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((ent) => {
+        if (ent.isIntersecting) {
+          const country = ent.target.getAttribute('data-country');
+          railItems.forEach((r) => r.classList.toggle('active', r.dataset.country === country));
+        }
+      });
+    }, { root: feed, threshold: 0.05, rootMargin: '-15% 0px -75% 0px' });
+    sections.forEach((s) => io.observe(s));
+  }
+</script>

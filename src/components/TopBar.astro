@@ -1,0 +1,27 @@
+---
+import type { Photo } from '~/lib/photos';
+
+interface Props {
+  photos: Photo[];
+  active: 'map' | 'timeline';
+}
+const { photos, active } = Astro.props;
+
+// "未定位" is a UI bucket, not a real country — exclude it from the count.
+const countries = new Set(
+  photos.map((p) => p.country).filter((c) => c && c !== '未定位')
+);
+const dates = photos.map((p) => p.datetime.slice(0, 10)).sort();
+const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1].slice(0, 4)}` : '';
+---
+<header id="topbar">
+  <a class="brand" href="/">
+    <span class="logo">📸</span>
+    <span class="title">Photo Portfolio</span>
+    <span class="stats">{photos.length} 張 · {countries.size} 國 · {span}</span>
+  </a>
+  <nav>
+    <a href="/" class={active === 'map' ? 'active' : ''}>🗺️ 地圖</a>
+    <a href="/timeline" class={active === 'timeline' ? 'active' : ''}>📅 Timeline</a>
+  </nav>
+</header>

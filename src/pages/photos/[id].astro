@@ -1,0 +1,539 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import { getPhotos, type Photo } from '~/lib/photos';
+
+export async function getStaticPaths() {
+  const photos = await getPhotos();
+  // Stable chronological order so prev/next is meaningful.
+  const sorted = [...photos].sort((a, b) => a.datetime.localeCompare(b.datetime));
+  return sorted.map((p, i) => ({
+    params: { id: p.id },
+    props: {
+      photo: p,
+      prev: i > 0 ? sorted[i - 1] : null,
+      next: i < sorted.length - 1 ? sorted[i + 1] : null,
+      position: { index: i + 1, total: sorted.length },
+    },
+  }));
+}
+
+interface Props {
+  photo: Photo;
+  prev: Photo | null;
+  next: Photo | null;
+  position: { index: number; total: number };
+}
+const { photo, prev, next, position } = Astro.props;
+// Date only — time-of-day is misleading without a timezone, and the user prefers a clean date.
+const prettyDate = photo.datetime ? photo.datetime.slice(0, 10) : '';
+
+function flag(code: string) {
+  if (!code || code.length !== 2) return '📍';
+  return String.fromCodePoint(
+    ...[...code.toLowerCase()].map((c) => 0x1f1e6 + (c.charCodeAt(0) - 97))
+  );
+}
+---
+<Layout title={`${photo.country || ''} · ${prettyDate} · Photo Portfolio`}>
+  <div class="detail-page">
+    <a class="back" href="/">← 回地圖</a>
+
+    {prev && (
+      <a class="page-nav prev" href={`/photos/${prev.id}`} data-key="prev" title="上一張 (←)" rel="prev">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polyline points="15 18 9 12 15 6"/></svg>
+      </a>
+    )}
+    {next && (
+      <a class="page-nav next" href={`/photos/${next.id}`} data-key="next" title="下一張 (→)" rel="next">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polyline points="9 18 15 12 9 6"/></svg>
+      </a>
+    )}
+
+    <div class="stage">
+      <img class="hero" src={photo.thumbs.l} data-original={photo.originalUrl} alt={photo.album || photo.file} id="hero" />
+    </div>
+
+    <div id="loc-modal" class="loc-modal" hidden>
+      <div class="loc-modal-inner">
+        <header>
+          <span>編輯位置 + 日期</span>
+          <button id="loc-close" type="button" aria-label="關閉">×</button>
+        </header>
+        <div class="loc-date-row">
+          <label for="loc-date">📅 日期</label>
+          <input type="date" id="loc-date" />
+          <button id="loc-date-clear" type="button" class="link-btn" title="清除手動日期(回到 EXIF)">清除</button>
+        </div>
+        <div id="loc-map"></div>
+        <footer class="loc-footer">
+          <div class="loc-status" id="loc-status">尚未選位置</div>
+          <div class="loc-actions">
+            <button id="loc-remove" type="button" class="btn-danger" hidden>移除手動位置</button>
+            <button id="loc-cancel" type="button" class="btn-secondary">取消</button>
+            <button id="loc-save" type="button" class="btn-primary" disabled>儲存</button>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <div class="info-bar">
+      <div class="left">
+        <span class="flag">{flag(photo.countryCode)}</span>
+        <span>{photo.country || '—'}</span>
+        <span class="dot">·</span>
+        <span>{prettyDate || '時間不詳'}</span>
+        {photo.album && (
+          <>
+            <span class="dot">·</span>
+            <span class="album-pill">{photo.album}</span>
+          </>
+        )}
+      </div>
+      <div class="right">
+        <button id="set-location" class="loc-btn" type="button" title="編輯位置/日期">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+          <span>{photo.lat ? '編輯位置' : '設定位置'}</span>
+        </button>
+        {photo.manualLocation && (
+          <button id="revert-location" class="loc-btn revert" type="button" title="回到未分類(移除手動位置)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+            <span>回到未分類</span>
+          </button>
+        )}
+        <span class="position">{position.index} / {position.total}</span>
+        <a href={photo.originalUrl} target="_blank" class="download-link" title="下載原檔">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</Layout>
+
+<style is:global>
+  .detail-page {
+    position: relative;
+    height: 100vh;
+    background: #0a0a0a;
+    color: white;
+    display: flex;
+    flex-direction: column;
+  }
+  .detail-page .back {
+    position: absolute;
+    top: 16px;
+    left: 18px;
+    z-index: 10;
+    color: rgba(255,255,255,0.85);
+    background: rgba(0,0,0,0.4);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    backdrop-filter: blur(6px);
+  }
+  .detail-page .back:hover { background: rgba(0,0,0,0.7); text-decoration: none; }
+
+  .detail-page .page-nav {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    z-index: 10;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    background: rgba(0,0,0,0.45);
+    color: white;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(6px);
+    transition: background 0.15s, transform 0.15s;
+  }
+  .detail-page .page-nav.prev { left: 24px; }
+  .detail-page .page-nav.next { right: 24px; }
+  .detail-page .page-nav:hover {
+    background: rgba(0,0,0,0.8);
+    transform: translateY(-50%) scale(1.08);
+    text-decoration: none;
+  }
+
+  .detail-page .stage {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 90px 30px;
+    min-height: 0;
+  }
+  .detail-page .hero {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    cursor: zoom-in;
+    border-radius: 4px;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+  }
+
+  .detail-page .info-bar {
+    padding: 12px 28px 18px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: rgba(255,255,255,0.85);
+    font-size: 13px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .detail-page .info-bar .left,
+  .detail-page .info-bar .right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .detail-page .info-bar .flag { font-size: 18px; line-height: 1; }
+  .detail-page .info-bar .dot { color: rgba(255,255,255,0.4); }
+  .detail-page .info-bar .album-pill {
+    background: rgba(255,255,255,0.12);
+    padding: 2px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+  }
+  .detail-page .info-bar .position {
+    color: rgba(255,255,255,0.55);
+    font-variant-numeric: tabular-nums;
+  }
+  .detail-page .download-link {
+    color: rgba(255,255,255,0.85);
+    background: rgba(255,255,255,0.1);
+    padding: 6px 8px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .detail-page .download-link:hover {
+    background: rgba(255,255,255,0.2);
+    text-decoration: none;
+  }
+  .detail-page .loc-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(255,255,255,0.1);
+    color: rgba(255,255,255,0.9);
+    border: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .detail-page .loc-btn:hover { background: rgba(255,255,255,0.2); }
+
+  .loc-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 9998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .loc-modal[hidden] { display: none; }
+  .loc-modal-inner {
+    background: white;
+    color: var(--text);
+    border-radius: 10px;
+    overflow: hidden;
+    width: min(720px, 92vw);
+    height: min(560px, 80vh);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+  }
+  .loc-modal-inner header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .loc-modal-inner header button {
+    background: none;
+    border: none;
+    font-size: 22px;
+    cursor: pointer;
+    color: var(--muted);
+    padding: 0 4px;
+  }
+  .loc-date-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .loc-date-row label { color: var(--muted); }
+  .loc-date-row input[type="date"] {
+    padding: 4px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  .loc-date-row .link-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 12px;
+    text-decoration: underline;
+    padding: 2px 4px;
+  }
+  .loc-date-row .link-btn:hover { color: var(--text); }
+
+  #loc-map { flex: 1; }
+  .loc-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    border-top: 1px solid var(--border);
+    gap: 12px;
+  }
+  .loc-status {
+    font-size: 12px;
+    color: var(--muted);
+    flex: 1;
+    min-width: 0;
+  }
+  .loc-status.dirty { color: var(--accent); font-weight: 500; }
+  .loc-status.saving { color: #b46d00; }
+  .loc-status.saved { color: #1a8a3a; }
+  .loc-status.error { color: #c93; }
+  .loc-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .btn-primary, .btn-secondary {
+    padding: 6px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    font-family: inherit;
+    border: 1px solid transparent;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+  .btn-primary:hover:not(:disabled) { background: #024fa1; }
+  .btn-primary:disabled { background: #d0d7e0; cursor: not-allowed; }
+  .btn-secondary {
+    background: white;
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .btn-secondary:hover { background: #f3f4f6; }
+  .btn-danger {
+    background: white;
+    color: #c93636;
+    border-color: #f0c0c0;
+  }
+  .btn-danger:hover { background: #fdf0f0; border-color: #d97070; }
+
+  @media (max-width: 720px) {
+    .detail-page .stage { padding: 50px 16px 20px; }
+    .detail-page .page-nav { width: 40px; height: 40px; }
+    .detail-page .page-nav.prev { left: 8px; }
+    .detail-page .page-nav.next { right: 8px; }
+  }
+</style>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" is:inline></script>
+<script define:vars={{
+  prevHref: prev?.id ? `/photos/${prev.id}` : null,
+  nextHref: next?.id ? `/photos/${next.id}` : null,
+  originalUrl: photo.originalUrl,
+  photoPath: photo.path,
+  initialLat: photo.lat || null,
+  initialLon: photo.lon || null,
+  manualLocation: photo.manualLocation,
+  initialDate: photo.datetime ? photo.datetime.slice(0, 10) : '',
+  // Hide the date row entirely when the date already comes from EXIF and
+  // hasn't been manually overridden — EXIF is authoritative in that case.
+  exifProvidedDate: !!photo.datetime && !photo.manualDatetime,
+}}>
+  document.addEventListener('keydown', (e) => {
+    if (document.getElementById('loc-modal')?.hidden === false) return;
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    if (e.key === 'ArrowLeft' && prevHref) window.location.href = prevHref;
+    else if (e.key === 'ArrowRight' && nextHref) window.location.href = nextHref;
+    else if (e.key === 'Escape') window.location.href = '/';
+  });
+
+  document.getElementById('hero')?.addEventListener('click', () => {
+    window.open(originalUrl, '_blank');
+  });
+
+  // ---- Location + date editor modal ----
+  const modal = document.getElementById('loc-modal');
+  const status = document.getElementById('loc-status');
+  const saveBtn = document.getElementById('loc-save');
+  const cancelBtn = document.getElementById('loc-cancel');
+  const removeBtn = document.getElementById('loc-remove');
+  const dateInput = document.getElementById('loc-date');
+  const dateClear = document.getElementById('loc-date-clear');
+
+  let map = null;
+  let marker = null;
+  let pendingLatLng = null;
+  let savedLatLng = initialLat !== null && initialLon !== null
+    ? { lat: initialLat, lng: initialLon }
+    : null;
+  let savedDate = initialDate || '';
+  let pendingDate = savedDate;
+
+  function isLocDirty() {
+    if (!pendingLatLng) return false;
+    if (!savedLatLng) return true;
+    return Math.abs(pendingLatLng.lat - savedLatLng.lat) > 1e-6
+        || Math.abs(pendingLatLng.lng - savedLatLng.lng) > 1e-6;
+  }
+  function isDateDirty() { return pendingDate !== savedDate; }
+  function isDirty() { return isLocDirty() || isDateDirty(); }
+
+  function updateStatus() {
+    saveBtn.disabled = !isDirty();
+    if (removeBtn) removeBtn.hidden = !manualLocation || !savedLatLng;
+    let parts = [];
+    if (savedLatLng) parts.push(`位置:${savedLatLng.lat.toFixed(4)}, ${savedLatLng.lng.toFixed(4)}`);
+    else parts.push('位置:未設定');
+    if (savedDate) parts.push(`日期:${savedDate}`);
+    if (isDirty()) {
+      status.className = 'loc-status dirty';
+      const changes = [];
+      if (isLocDirty()) changes.push(`位置→ ${pendingLatLng.lat.toFixed(4)}, ${pendingLatLng.lng.toFixed(4)}`);
+      if (isDateDirty()) changes.push(`日期→ ${pendingDate || '(清除)'}`);
+      status.textContent = `未儲存:${changes.join(' · ')}`;
+    } else {
+      status.className = 'loc-status';
+      status.textContent = parts.join(' · ');
+    }
+  }
+
+  function setPin(latLng) {
+    pendingLatLng = { lat: latLng.lat, lng: latLng.lng };
+    if (marker) {
+      marker.setLatLng(latLng);
+    } else {
+      marker = L.marker(latLng, { draggable: true }).addTo(map);
+      marker.on('dragend', () => {
+        pendingLatLng = { lat: marker.getLatLng().lat, lng: marker.getLatLng().lng };
+        updateStatus();
+      });
+    }
+    updateStatus();
+  }
+
+  function openLocModal() {
+    modal.hidden = false;
+    // Hide the date row when EXIF already supplied a date (and user hasn't
+    // overridden it). For "no date / manual date" photos, the row stays
+    // visible so they can edit/clear it.
+    const dateRow = document.querySelector('.loc-date-row');
+    if (dateRow) dateRow.style.display = exifProvidedDate ? 'none' : '';
+    if (!map) {
+      map = L.map('loc-map', { worldCopyJump: true });
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+        maxZoom: 19, subdomains: 'abcd', attribution: '&copy; OpenStreetMap &copy; CARTO',
+      }).addTo(map);
+      const startLat = initialLat ?? 23.5;
+      const startLon = initialLon ?? 121;
+      map.setView([startLat, startLon], initialLat ? 11 : 4);
+      if (initialLat) setPin({ lat: startLat, lng: startLon });
+      map.on('click', (e) => setPin(e.latlng));
+    }
+    dateInput.value = pendingDate;
+    updateStatus();
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+
+  function closeLocModal() {
+    if (isDirty() && !confirm('還有未儲存的變更,確定要離開嗎?')) return;
+    // Reset pending state to last-saved so reopening doesn't keep stale data
+    pendingLatLng = savedLatLng ? { ...savedLatLng } : null;
+    pendingDate = savedDate;
+    if (marker && savedLatLng) marker.setLatLng(savedLatLng);
+    dateInput.value = pendingDate;
+    modal.hidden = true;
+  }
+
+  async function postMetadata(body) {
+    const res = await fetch('/api/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: photoPath, ...body }),
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'save failed');
+    try { await fetch('/api/refresh', { method: 'POST' }); } catch {}
+  }
+
+  async function doSave() {
+    saveBtn.disabled = true;
+    status.className = 'loc-status saving';
+    status.textContent = '儲存中…';
+    try {
+      const body = {};
+      if (isLocDirty() && pendingLatLng) {
+        body.lat = pendingLatLng.lat;
+        body.lon = pendingLatLng.lng;
+      }
+      if (isDateDirty()) body.datetime = pendingDate || null;
+      await postMetadata(body);
+      if (pendingLatLng) savedLatLng = { ...pendingLatLng };
+      savedDate = pendingDate;
+      status.className = 'loc-status saved';
+      status.textContent = `✓ 已存 · 重新整理頁面看效果`;
+    } catch (err) {
+      status.className = 'loc-status error';
+      status.textContent = `⚠ 失敗:${err.message || err}`;
+      saveBtn.disabled = false;
+    }
+  }
+
+  async function doRemove() {
+    if (!confirm('確定要移除手動位置?照片會回到「未定位」分類。')) return;
+    try {
+      await postMetadata({ lat: null, lon: null });
+      // Refresh to /timeline so the user immediately sees the photo move
+      window.location.href = '/timeline';
+    } catch (err) {
+      alert(`移除失敗:${err.message || err}`);
+    }
+  }
+
+  dateInput.addEventListener('input', () => {
+    pendingDate = dateInput.value;
+    updateStatus();
+  });
+  dateClear.addEventListener('click', () => {
+    pendingDate = '';
+    dateInput.value = '';
+    updateStatus();
+  });
+
+  document.getElementById('set-location')?.addEventListener('click', openLocModal);
+  document.getElementById('loc-close')?.addEventListener('click', closeLocModal);
+  cancelBtn?.addEventListener('click', closeLocModal);
+  saveBtn?.addEventListener('click', doSave);
+  removeBtn?.addEventListener('click', doRemove);
+  document.getElementById('revert-location')?.addEventListener('click', doRemove);
+  modal?.addEventListener('click', (e) => { if (e.target === modal) closeLocModal(); });
+
+  // Auto-open the modal for photos that still have no location.
+  const url = new URL(window.location.href);
+  if (url.searchParams.get('pin') === '1' || initialLat === null) {
+    setTimeout(openLocModal, 80);
+  }
+</script>

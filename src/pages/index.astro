@@ -1,0 +1,159 @@
+---
+import Layout from '~/layouts/Layout.astro';
+import TopBar from '~/components/TopBar.astro';
+import Lightbox from '~/components/Lightbox.astro';
+import PreviewPanel from '~/components/PreviewPanel.astro';
+import { getPhotos } from '~/lib/photos';
+
+const allPhotos = await getPhotos();
+// Map only displays photos with coordinates; no-GPS photos live in the
+// Timeline "📍 未定位" bucket until the user pins a location for them.
+const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
+---
+<Layout title="📸 Photo Portfolio · 地圖">
+  <div class="app-shell">
+    <TopBar photos={allPhotos} active="map" />
+    <main id="main">
+      <div id="map"></div>
+      <PreviewPanel />
+    </main>
+  </div>
+  <Lightbox />
+</Layout>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" is:inline></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" is:inline></script>
+
+<script define:vars={{ photos }}>
+  // Compute the minimum zoom that still keeps the world strictly wider than
+  // the viewport — guarantees you never see the same marker twice on screen.
+  //   world width at zoom z = 256 * 2^z pixels
+  //   need 256 * 2^z > viewport width
+  function minZoomForViewport() {
+    return Math.max(2, Math.ceil(Math.log2(window.innerWidth / 256)));
+  }
+
+  const L = window.L;
+  const map = L.map('map', {
+    zoomControl: true,
+    minZoom: minZoomForViewport(),
+    // Vertical: hard wall at ±85° so no grey above/below the world.
+    // Horizontal: practically unlimited — combined with the dynamic marker
+    // duplication below, you can pan east/west forever and photos keep
+    // appearing in each world copy.
+    maxBounds: [[-85, -10000], [85, 10000]],
+    maxBoundsViscosity: 1.0,
+  });
+
+  // Recompute on window resize — but never force-snap the current view, just
+  // tighten the floor so subsequent zoom-outs are limited.
+  window.addEventListener('resize', () => {
+    const z = minZoomForViewport();
+    if (map.getMinZoom() !== z) map.setMinZoom(z);
+  });
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+    maxZoom: 19,
+    subdomains: 'abcd',
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    noWrap: false,
+  }).addTo(map);
+
+  // (Removed dynamic minZoom: it was snapping the view back during interaction.
+  //  Fixed minZoom of 2 is set in the map options above; small grey peeks at
+  //  the very edge are acceptable.)
+
+  // Custom photo-thumbnail markers (circular)
+  function photoMarkerIcon(photo) {
+    return L.divIcon({
+      html: `<div class="photo-marker"><img loading="lazy" src="${photo.thumbs.s}" alt=""></div>`,
+      className: '',
+      iconSize: [52, 52],
+      iconAnchor: [26, 26],
+    });
+  }
+
+  // Cluster icon: top photo + count badge
+  const cluster = L.markerClusterGroup({
+    maxClusterRadius: 60,
+    showCoverageOnHover: false,
+    spiderfyOnMaxZoom: true,
+    disableClusteringAtZoom: 18,
+    iconCreateFunction(cl) {
+      const count = cl.getChildCount();
+      const top = cl.getAllChildMarkers()[0];
+      const thumb = top?.options?.photoThumb || '';
+      return L.divIcon({
+        html: `<div class="photo-cluster">
+          <div class="stack"><img src="${thumb}" alt=""></div>
+          <span class="badge">${count}</span>
+        </div>`,
+        className: '',
+        iconSize: [64, 64],
+        iconAnchor: [32, 32],
+      });
+    },
+  });
+  map.addLayer(cluster);
+
+  // Lazy infinite markers: as the user pans, we add markers in whatever world
+  // copies become visible (and keep them there). No upfront cost for distant
+  // worlds; no "they vanished" surprise either.
+  const populatedWorlds = new Set();
+  function makeMarker(p, off) {
+    const m = L.marker([p.lat, p.lon + off], {
+      icon: photoMarkerIcon(p),
+      photoThumb: p.thumbs.s,
+      riseOnHover: true,
+    });
+    m.on('click', (e) => {
+      L.DomEvent.stopPropagation(e);
+      window.dispatchEvent(new CustomEvent('preview:open', { detail: { photo: p } }));
+    });
+    return m;
+  }
+  function populateWorld(worldIndex) {
+    if (populatedWorlds.has(worldIndex)) return;
+    populatedWorlds.add(worldIndex);
+    const off = worldIndex * 360;
+    const batch = photos.map((p) => makeMarker(p, off));
+    cluster.addLayers(batch);
+  }
+  function syncVisibleWorlds() {
+    const b = map.getBounds();
+    // Allow a 1-world buffer on each side so markers appear before they enter view.
+    const minW = Math.floor((b.getWest() + 180) / 360) - 1;
+    const maxW = Math.floor((b.getEast() + 180) / 360) + 1;
+    for (let w = minW; w <= maxW; w++) populateWorld(w);
+  }
+  populateWorld(0); // original world up-front so initial paint is fast
+  map.on('moveend zoomend', syncVisibleWorlds);
+
+  // ----- "Fit all" reset button -----
+  const photoBounds = photos.length
+    ? L.latLngBounds(photos.map((p) => [p.lat, p.lon]))
+    : null;
+  if (photoBounds) {
+    map.fitBounds(photoBounds, { padding: [80, 80] });
+  } else {
+    map.setView([25.033, 121.5654], 10);
+  }
+
+  const ResetView = L.Control.extend({
+    options: { position: 'topright' },
+    onAdd() {
+      const a = L.DomUtil.create('a', 'leaflet-bar reset-view-btn');
+      a.title = '回到全部照片';
+      a.href = '#';
+      a.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>`;
+      L.DomEvent.on(a, 'click', (e) => {
+        L.DomEvent.stop(e);
+        if (photoBounds) map.flyToBounds(photoBounds, { padding: [80, 80], duration: 0.7 });
+      });
+      return a;
+    },
+  });
+  new ResetView().addTo(map);
+
+  map.on('click', () => window.dispatchEvent(new Event('preview:close')));
+</script>
