@@ -55,5 +55,18 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
   <slot />
   <Toast />
   <PasswordPrompt />
+  <script>
+    // Sync body.logged-in class with the stored admin token, on EVERY page —
+    // not just the ones with TopBar. Drives `.edit-only` visibility globally.
+    const TOKEN_KEY = 'photo-admin-token';
+    function syncAuthClass() {
+      const has = !!localStorage.getItem(TOKEN_KEY);
+      document.body.classList.toggle('logged-in', has);
+      document.body.classList.toggle('logged-out', !has);
+    }
+    syncAuthClass();
+    window.addEventListener('storage', (e) => { if (e.key === TOKEN_KEY) syncAuthClass(); });
+    window.addEventListener('auth:changed', syncAuthClass);
+  </script>
 </body>
 </html>
