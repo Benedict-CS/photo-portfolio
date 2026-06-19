@@ -1,0 +1,166 @@
+---
+export const prerender = false;
+import Layout from '~/layouts/Layout.astro';
+import TopBar from '~/components/TopBar.astro';
+import Lightbox from '~/components/Lightbox.astro';
+import { getPhotos } from '~/lib/photos';
+
+const photos = await getPhotos();
+
+// Buckets the admin needs to action.
+const buckets = [
+  {
+    key: 'unlocated',
+    label: '📍 未定位',
+    desc: '沒 GPS,點進去打 pin',
+    photos: photos.filter((p) => p.lat === null || p.lon === null),
+    color: '#dc7878',
+  },
+  {
+    key: 'manual-pin',
+    label: '✋ 手動標位置',
+    desc: '你手動 pin 的,確認沒標錯',
+    photos: photos.filter((p) => p.manualLocation),
+    color: '#6ec27e',
+  },
+];
+
+const totalNeedsAction = buckets[0].photos.length;
+---
+<Layout title="Admin · Photo Portfolio">
+  <div class="app-shell">
+    <TopBar photos={photos} active="map" />
+    <main class="admin-main">
+      <header class="admin-header">
+        <h1>⚙️ Admin Dashboard</h1>
+        <p class="admin-sub">
+          總共 <b>{photos.length}</b> 張 · 還有 <b>{totalNeedsAction}</b> 張可以再加料
+        </p>
+      </header>
+
+      <div class="bucket-grid">
+        {buckets.map((b) => (
+          <section class="bucket" data-key={b.key} style={`--bucket-color: ${b.color}`}>
+            <header>
+              <div>
+                <h2>{b.label}</h2>
+                <p>{b.desc}</p>
+              </div>
+              <div class="count">{b.photos.length}</div>
+            </header>
+            {b.photos.length === 0 ? (
+              <div class="empty">✓ 全部處理完了</div>
+            ) : (
+              <div class="thumbs">
+                {b.photos.slice(0, 12).map((p) => (
+                  <a href={`/photos/${p.id}`} class="thumb-cell" title={p.path}>
+                    <img loading="lazy" src={p.thumbs.s} alt="" />
+                  </a>
+                ))}
+                {b.photos.length > 12 && (
+                  <a href={`#${b.key}-all`} class="more" data-bucket={b.key}>
+                    +{b.photos.length - 12}
+                  </a>
+                )}
+              </div>
+            )}
+          </section>
+        ))}
+      </div>
+    </main>
+  </div>
+  <Lightbox />
+</Layout>
+
+<style is:global>
+  .admin-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 48px 80px;
+    background: var(--bg);
+  }
+  .admin-header { margin-bottom: 32px; }
+  .admin-header h1 {
+    font-size: 32px;
+    font-weight: 800;
+    margin: 0 0 6px;
+    letter-spacing: -0.02em;
+  }
+  .admin-sub { color: var(--muted); margin: 0; }
+
+  .bucket-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 18px;
+  }
+
+  .bucket {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 18px;
+    border-left: 4px solid var(--bucket-color, var(--accent));
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+  }
+  .bucket header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+    margin-bottom: 14px;
+  }
+  .bucket h2 { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+  .bucket p { font-size: 12px; color: var(--muted); margin: 0; }
+  .bucket .count {
+    font-size: 32px;
+    font-weight: 800;
+    color: var(--bucket-color, var(--accent));
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .bucket .empty {
+    color: #1a8a3a;
+    font-size: 13px;
+    padding: 16px 0;
+    text-align: center;
+  }
+  .bucket .thumbs {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+  }
+  .bucket .thumb-cell {
+    aspect-ratio: 1;
+    overflow: hidden;
+    border-radius: 3px;
+    background: #ddd;
+    display: block;
+  }
+  .bucket .thumb-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .bucket .thumb-cell:hover { opacity: 0.85; }
+  .bucket .more {
+    aspect-ratio: 1;
+    background: #f3f4f6;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 3px;
+    color: var(--muted);
+    font-weight: 600;
+    font-size: 13px;
+  }
+  .bucket .more:hover {
+    background: #e6e8eb;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  @media (max-width: 600px) {
+    .admin-main { padding: 20px 16px 60px; }
+    .bucket-grid { grid-template-columns: 1fr; }
+  }
+</style>

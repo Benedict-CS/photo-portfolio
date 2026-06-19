@@ -22,6 +22,23 @@ html, body {
 * { scrollbar-width: none; -ms-overflow-style: none; }
 *::-webkit-scrollbar { width: 0; height: 0; display: none; }
 
+/* Editing affordances are hidden until the user has logged in (top-right). */
+body:not(.logged-in) .edit-only { display: none !important; }
+
+/* ---- Subtle page-load fade so every navigation feels intentional. ---- */
+@keyframes page-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+body > * { animation: page-fade-in 0.28s cubic-bezier(0.2, 0.9, 0.3, 1); }
+/* But never animate the toast / modal layers (they have their own). */
+body > #toast-stack,
+body > #pw-modal { animation: none; }
+
+/* Generic interactive feedback */
+a, button { transition: background-color 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s; }
+img { transition: opacity 0.18s; }
+
 /* ---- LQIP / blur-up image loading ---- */
 .lqip {
   background-size: cover;

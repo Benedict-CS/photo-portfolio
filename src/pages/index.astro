@@ -1,4 +1,5 @@
 ---
+export const prerender = false;
 import Layout from '~/layouts/Layout.astro';
 import TopBar from '~/components/TopBar.astro';
 import Lightbox from '~/components/Lightbox.astro';
@@ -15,11 +16,97 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     <TopBar photos={allPhotos} active="map" />
     <main id="main">
       <div id="map"></div>
+      <div id="map-toolbar">
+        <button id="mode-markers" class="map-mode-btn active" title="散點模式">📍</button>
+        <button id="mode-routes" class="map-mode-btn" title="旅程路線(同國家連續 7 天內自動連線)">⚡</button>
+      </div>
+      <div id="time-slider">
+        <div class="ts-labels">
+          <span id="ts-from">—</span>
+          <span id="ts-active">所有時間</span>
+          <span id="ts-to">—</span>
+        </div>
+        <input id="ts-range" type="range" min="0" max="100" value="100" step="1" />
+        <div class="ts-help">拖滑桿 → 只顯示該時間點之前的照片</div>
+      </div>
       <PreviewPanel />
     </main>
   </div>
   <Lightbox />
 </Layout>
+
+<style is:global>
+  #map-toolbar {
+    position: absolute;
+    bottom: 24px;
+    left: 14px;
+    z-index: 1000;
+    background: white;
+    border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.16);
+    display: flex;
+    padding: 4px;
+    gap: 2px;
+  }
+  .map-mode-btn {
+    background: none;
+    border: none;
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    font-size: 16px;
+    color: var(--text);
+    transition: background 0.15s;
+  }
+  .map-mode-btn:hover { background: #f3f4f6; }
+  .map-mode-btn.active { background: var(--accent); color: white; }
+
+  #time-slider {
+    position: absolute;
+    top: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 1000;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(6px);
+    border-radius: 12px;
+    padding: 10px 18px;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.12);
+    width: min(520px, calc(100% - 28px));
+    box-sizing: border-box;
+  }
+  #time-slider .ts-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  #time-slider .ts-active {
+    font-weight: 600;
+    color: var(--accent);
+  }
+  #time-slider input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+  }
+  #time-slider .ts-help {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 2px;
+    text-align: center;
+  }
+
+  /* Trip route polyline */
+  .route-line {
+    stroke: var(--accent);
+    stroke-width: 2.5;
+    stroke-dasharray: 4 6;
+    fill: none;
+    opacity: 0.7;
+  }
+</style>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" is:inline></script>
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" is:inline></script>
@@ -156,4 +243,120 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   new ResetView().addTo(map);
 
   map.on('click', () => window.dispatchEvent(new Event('preview:close')));
+
+  // ---- Time slider: only show photos with datetime <= slider value ----
+  const datedPhotos = photos.filter((p) => p.datetime);
+  const sortedTimes = datedPhotos.map((p) => p.datetime.slice(0, 10)).sort();
+  const minDate = sortedTimes[0] || '';
+  const maxDate = sortedTimes[sortedTimes.length - 1] || '';
+  const tsFrom = document.getElementById('ts-from');
+  const tsTo = document.getElementById('ts-to');
+  const tsActive = document.getElementById('ts-active');
+  const tsRange = document.getElementById('ts-range');
+  if (tsFrom) tsFrom.textContent = minDate || '—';
+  if (tsTo) tsTo.textContent = maxDate || '—';
+
+  let timeFilter = 100; // 0–100, percent of timeline included (from min to that point)
+  function dateAtSliderValue(val) {
+    if (!sortedTimes.length) return maxDate;
+    const idx = Math.floor((val / 100) * (sortedTimes.length - 1));
+    return sortedTimes[idx];
+  }
+  function isPhotoIncludedByTime(p) {
+    if (timeFilter >= 100) return true;
+    if (!p.datetime) return false;
+    return p.datetime.slice(0, 10) <= dateAtSliderValue(timeFilter);
+  }
+  tsRange?.addEventListener('input', () => {
+    timeFilter = parseInt(tsRange.value, 10);
+    const cutoff = dateAtSliderValue(timeFilter);
+    if (tsActive) tsActive.textContent = timeFilter >= 100 ? '所有時間' : `≤ ${cutoff}`;
+    rerender();
+  });
+
+  // ---- Mode switcher (markers / routes) ----
+  let mode = 'markers';
+  function setMode(next) {
+    mode = next;
+    document.querySelectorAll('.map-mode-btn').forEach((b) => b.classList.remove('active'));
+    document.getElementById(`mode-${next}`)?.classList.add('active');
+    rerender();
+  }
+  document.getElementById('mode-markers')?.addEventListener('click', () => setMode('markers'));
+  document.getElementById('mode-routes')?.addEventListener('click', () => setMode('routes'));
+
+  // ---- Auto-detected trip polylines ----
+  // No need for albums. We group photos by:
+  //   - same country, AND
+  //   - consecutive photos within 7 days of each other.
+  // Each resulting group of 2+ photos becomes one polyline.
+  const TRIP_GAP_DAYS = 7;
+  const ONE_DAY_MS = 86_400_000;
+  const PALETTE = ['#0366d6', '#d97706', '#16a34a', '#9333ea', '#dc2626', '#0891b2', '#ca8a04'];
+
+  function colorFor(seed) {
+    let h = 0;
+    for (let i = 0; i < seed.length; i++) h = (h * 31 + seed.charCodeAt(i)) | 0;
+    return PALETTE[Math.abs(h) % PALETTE.length];
+  }
+
+  const routeLayer = L.layerGroup();
+  function buildRoutes() {
+    routeLayer.clearLayers();
+    const visible = photos
+      .filter(isPhotoIncludedByTime)
+      .filter((p) => p.datetime && p.country)
+      .sort((a, b) => a.datetime.localeCompare(b.datetime));
+
+    let group = [];
+    function flush() {
+      if (group.length >= 2) {
+        const pts = group.map((p) => [p.lat, p.lon]);
+        L.polyline(pts, {
+          color: colorFor(group[0].country + group[0].datetime.slice(0, 7)),
+          weight: 3,
+          opacity: 0.75,
+          dashArray: '5 8',
+        }).addTo(routeLayer);
+      }
+      group = [];
+    }
+
+    for (const p of visible) {
+      const prev = group[group.length - 1];
+      if (!prev) { group.push(p); continue; }
+      const sameCountry = prev.country === p.country;
+      const gapDays = (new Date(p.datetime).getTime() - new Date(prev.datetime).getTime()) / ONE_DAY_MS;
+      if (sameCountry && gapDays <= TRIP_GAP_DAYS) {
+        group.push(p);
+      } else {
+        flush();
+        group.push(p);
+      }
+    }
+    flush();
+  }
+
+  // ---- Re-render everything when mode/time changes ----
+  function rerender() {
+    // Markers layer
+    cluster.clearLayers();
+    if (mode === 'markers' || mode === 'routes') {
+      const visible = photos.filter(isPhotoIncludedByTime);
+      // (we don't repopulate distant worlds here — they were added on pan)
+      const ms = visible.map((p) => makeMarker(p, 0));
+      cluster.addLayers(ms);
+      if (!map.hasLayer(cluster)) map.addLayer(cluster);
+    } else {
+      if (map.hasLayer(cluster)) map.removeLayer(cluster);
+    }
+
+    // Routes
+    if (mode === 'routes') {
+      buildRoutes();
+      if (!map.hasLayer(routeLayer)) map.addLayer(routeLayer);
+    } else {
+      if (map.hasLayer(routeLayer)) map.removeLayer(routeLayer);
+    }
+  }
 </script>

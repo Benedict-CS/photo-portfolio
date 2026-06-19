@@ -18,7 +18,7 @@
   </button>
   <img id="lightbox-img" alt="" />
   <div class="lb-counter" id="lightbox-counter"></div>
-  <a id="lightbox-detail" class="lb-detail" href="#" title="開詳細頁 (編輯位置/日期)">
+  <a id="lightbox-detail" class="lb-detail edit-only" href="#" title="開詳細頁 (編輯位置/日期)">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
     <span>編輯位置/日期</span>
   </a>
@@ -33,7 +33,8 @@
   const closeBtn = lb.querySelector('.lb-close') as HTMLButtonElement;
 
   let srcs: string[] = [];
-  let ids: string[] = [];  // photo IDs parallel to srcs (for "→ detail page")
+  let ids: string[] = [];          // photo IDs parallel to srcs (for "→ detail page")
+  let editable: boolean[] = [];    // per-photo: is anything editable?
   let idx = 0;
 
   // ---- Zoom & pan state ----
@@ -77,9 +78,10 @@
     prevBtn.style.visibility = i > 0 ? 'visible' : 'hidden';
     nextBtn.style.visibility = i < srcs.length - 1 ? 'visible' : 'hidden';
     const detail = document.getElementById('lightbox-detail') as HTMLAnchorElement;
-    if (ids[i]) {
-      // Append ?pin=1 so the detail page auto-opens the location modal —
-      // saves the user an extra click when they came here to edit.
+    // Only show the edit-link for photos that still have something editable.
+    // Photos with full EXIF (lat + lon + datetime, no overrides) are
+    // authoritative — no UI should suggest editing.
+    if (ids[i] && editable[i]) {
       detail.href = `/photos/${ids[i]}?pin=1`;
       detail.style.display = '';
     } else {
@@ -87,10 +89,11 @@
     }
   }
 
-  function open(list: string[], startIndex = 0, idList: string[] = []) {
+  function open(list: string[], startIndex = 0, idList: string[] = [], editableList: boolean[] = []) {
     if (!list.length) return;
     srcs = list;
     ids = idList;
+    editable = editableList;
     show(startIndex);
     lb.classList.add('show');
     lb.setAttribute('aria-hidden', 'false');
@@ -123,9 +126,14 @@
   window.addEventListener('lightbox:open', (e: any) => {
     const d = e.detail || {};
     if (Array.isArray(d.srcs)) {
-      open(d.srcs, d.index ?? 0, Array.isArray(d.ids) ? d.ids : []);
+      open(
+        d.srcs,
+        d.index ?? 0,
+        Array.isArray(d.ids) ? d.ids : [],
+        Array.isArray(d.editable) ? d.editable : []
+      );
     } else if (d.src) {
-      open([d.src], 0, d.id ? [d.id] : []);
+      open([d.src], 0, d.id ? [d.id] : [], [d.editable !== false]);
     }
   });
 

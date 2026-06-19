@@ -1,0 +1,105 @@
+---
+export const prerender = false;
+import Layout from '~/layouts/Layout.astro';
+import TopBar from '~/components/TopBar.astro';
+import Lightbox from '~/components/Lightbox.astro';
+import { getPhotos } from '~/lib/photos';
+
+const photos = await getPhotos();
+const favorites = photos.filter((p) => p.favorite);
+favorites.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
+---
+<Layout title="⭐ 收藏 · Photo Portfolio" description={`${favorites.length} 張收藏`}>
+  <div class="app-shell">
+    <TopBar photos={photos} active="map" />
+    <main class="favs-main">
+      <header class="favs-header">
+        <h1>⭐ 收藏</h1>
+        <p class="favs-sub">{favorites.length} 張</p>
+      </header>
+      {favorites.length === 0 ? (
+        <div class="empty-state">
+          <p>還沒收藏任何照片。<br />進詳細頁點右下角 ☆ 加入收藏。</p>
+        </div>
+      ) : (
+        <div class="favs-grid">
+          {favorites.map((p) => (
+            <a href={`/photos/${p.id}`} class="fav-card" title={p.path}>
+              <img
+                loading="lazy"
+                src={p.thumbs.s}
+                data-large={p.thumbs.m}
+                alt=""
+                onload="this.classList.add('loaded')"
+              />
+              <div class="info">
+                <span class="flag">⭐</span>
+                <span class="meta">
+                  {p.country || ''}{p.datetime && ` · ${p.datetime.slice(0, 10)}`}
+                </span>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </main>
+  </div>
+  <Lightbox />
+</Layout>
+
+<style is:global>
+  .favs-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 32px 48px 80px;
+  }
+  .favs-header { margin-bottom: 24px; }
+  .favs-header h1 {
+    font-size: 32px;
+    font-weight: 800;
+    margin: 0 0 4px;
+    letter-spacing: -0.02em;
+  }
+  .favs-sub { color: var(--muted); margin: 0; font-size: 13px; }
+
+  .favs-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+  }
+  .fav-card {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    border-radius: 6px;
+    overflow: hidden;
+    background: #ddd;
+    color: inherit;
+    text-decoration: none;
+  }
+  .fav-card img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transition: opacity 0.3s, transform 0.4s;
+    opacity: 0.0;
+  }
+  .fav-card img.loaded { opacity: 1; }
+  .fav-card:hover img { transform: scale(1.03); }
+  .fav-card .info {
+    position: absolute;
+    inset: auto 0 0 0;
+    padding: 8px 12px;
+    background: linear-gradient(to top, rgba(0,0,0,0.7), transparent);
+    color: white;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .fav-card .flag { font-size: 16px; }
+  .empty-state {
+    padding: 80px 20px;
+    text-align: center;
+    color: var(--muted);
+  }
+</style>

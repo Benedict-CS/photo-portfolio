@@ -1,7 +1,24 @@
 ---
 import '~/styles/global.css';
-interface Props { title?: string; }
-const { title = 'Photo Portfolio' } = Astro.props;
+import Toast from '~/components/Toast.astro';
+import PasswordPrompt from '~/components/PasswordPrompt.astro';
+
+interface Props {
+  title?: string;
+  description?: string;
+  ogImage?: string;
+  ogType?: 'website' | 'article';
+}
+const {
+  title = 'Photo Portfolio',
+  description = '旅行照片作品集 · 用 GPS 串起來的旅程記錄',
+  ogImage = '/icon-512.png',
+  ogType = 'website',
+} = Astro.props;
+
+const siteBase = Astro.site?.toString().replace(/\/$/, '') || '';
+const canonical = new URL(Astro.url.pathname, Astro.site || `http://localhost:4321/`).toString();
+const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}`;
 ---
 <!DOCTYPE html>
 <html lang="zh-Hant">
@@ -9,15 +26,34 @@ const { title = 'Photo Portfolio' } = Astro.props;
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{title}</title>
+  <meta name="description" content={description} />
+  <link rel="canonical" href={canonical} />
   <link rel="manifest" href="/manifest.webmanifest" />
   <meta name="theme-color" content="#0a0a0a" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+
+  <!-- Open Graph (LINE / FB / Slack / Discord) -->
+  <meta property="og:title" content={title} />
+  <meta property="og:description" content={description} />
+  <meta property="og:image" content={ogImageUrl} />
+  <meta property="og:url" content={canonical} />
+  <meta property="og:type" content={ogType} />
+  <meta property="og:site_name" content="Photo Portfolio" />
+  <!-- Twitter / X large-image card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content={title} />
+  <meta name="twitter:description" content={description} />
+  <meta name="twitter:image" content={ogImageUrl} />
+
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 </head>
 <body>
   <slot />
+  <Toast />
+  <PasswordPrompt />
 </body>
 </html>

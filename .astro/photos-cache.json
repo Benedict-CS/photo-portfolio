@@ -131,13 +131,15 @@
   },
   "未分類/889272_0.jpg": {
     "etag": "ff7131907d9a50bfaddec745c1910162",
-    "lat": 23.182595989265227,
-    "lon": 121.03088355204095,
+    "lat": null,
+    "lon": null,
     "datetime": "",
     "thumbKey": "未分類__889272_0",
-    "country": "臺灣",
-    "countryCode": "tw",
-    "placeholder": "data:image/webp;base64,UklGRogAAABXRUJQVlA4IHwAAAAwAgCdASoQABAAA8BgJbACdAYw7jafmE2lrAD+5/kkVhFLr0G9cXh5C1JYH7qjC9BdRD3AejzOyySUK4Pt/1n2aSW1wu7dXj1oiXvaiocQImO5T7pdBcGQeilzsIxFoZPF28I3yUdWRRyH6xScEg7jZzRNbxAeiHLouAAA"
+    "country": "未定位",
+    "countryCode": "",
+    "placeholder": "data:image/webp;base64,UklGRogAAABXRUJQVlA4IHwAAAAwAgCdASoQABAAA8BgJbACdAYw7jafmE2lrAD+5/kkVhFLr0G9cXh5C1JYH7qjC9BdRD3AejzOyySUK4Pt/1n2aSW1wu7dXj1oiXvaiocQImO5T7pdBcGQeilzsIxFoZPF28I3yUdWRRyH6xScEg7jZzRNbxAeiHLouAAA",
+    "manualLocation": false,
+    "manualDatetime": false
   },
   "未分類/889273_0.jpg": {
     "etag": "e46438f399c92872dadc9b072996f68d",
@@ -171,12 +173,12 @@
   },
   "未分類/IMG20250627113902.jpg": {
     "etag": "b3f015e5c61f1b42fade925623a2b978",
-    "lat": null,
-    "lon": null,
+    "lat": 22.76144663939182,
+    "lon": 121.1105345671531,
     "datetime": "2025-06-27T03:39:02",
     "thumbKey": "未分類__IMG20250627113902",
-    "country": "未定位",
-    "countryCode": "",
+    "country": "臺灣",
+    "countryCode": "tw",
     "placeholder": "data:image/webp;base64,UklGRmAAAABXRUJQVlA4IFQAAAAQAgCdASoQABAAA8BgJQBOgBusfvVUH65AAP7v1fJrkpKwKN5tCBltyptfTyH7bfQ18s+RvIESflsJ4ZDGWihmm2zbjT1NAjPQdICyTc0COVdmkAA="
   },
   "未分類/IMG20250824174751.jpg": {

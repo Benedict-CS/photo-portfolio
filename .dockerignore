@@ -1,0 +1,7 @@
+node_modules
+dist
+.git
+backups
+public/thumbs    # rebuilt on first sync; keep image small
+*.log
+.env             # mounted at runtime instead

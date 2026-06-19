@@ -1,14 +1,14 @@
 /**
- * Photo discovery + EXIF + thumbnail pipeline (Nextcloud edition).
+ * Photo discovery + EXIF + thumbnail pipeline (Astro DB edition).
  *
- * Source of truth: a public-share Nextcloud folder, read via WebDAV.
- *   - List files recursively
- *   - Read EXIF (GPS + datetime) by fetching the file once, then caching it
- *   - Generate multi-size thumbnails into public/thumbs/<size>/ via sharp
- *   - Originals are served straight from Nextcloud (public download URL)
+ * Single source of truth: SQLite table `Photo` (defined in db/config.ts).
+ * No more split metadata.json + photos-cache.json.
  *
- * Caching: .astro/photos-cache.json maps file -> { etag/mtime, lat, lon, datetime }.
- * If etag is unchanged, we skip the download AND skip thumbnail regeneration.
+ *   - Nextcloud share (read-only) → list files via WebDAV
+ *   - Compare etag against DB row; if changed, re-download + EXIF + thumb
+ *   - DB row also stores user-edited title/album/description and manual
+ *     overrides for lat/lon/datetime
+ *   - Edits go through src/pages/api/metadata.ts (alive in production)
  */
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
@@ -16,12 +16,12 @@ import { fileURLToPath } from 'node:url';
 import exifr from 'exifr';
 import sharp from 'sharp';
 import { createClient, type FileStat, type WebDAVClient } from 'webdav';
+import { db, Photo as PhotoTable, eq } from 'astro:db';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
-// Astro/Vite loads .env into import.meta.env; node CLI tools see process.env.
 const env: Record<string, string | undefined> =
   (typeof import.meta !== 'undefined' && (import.meta as any).env) || process.env;
 const NEXTCLOUD_URL = (env.NEXTCLOUD_URL || '').replace(/\/+$/, '');
@@ -29,22 +29,12 @@ const SHARE_TOKEN = env.NEXTCLOUD_SHARE_TOKEN || '';
 const SHARE_PASSWORD = env.NEXTCLOUD_SHARE_PASSWORD || '';
 
 const THUMBS_DIR = path.join(PROJECT_ROOT, 'public', 'thumbs');
-const METADATA_PATH = path.join(PROJECT_ROOT, 'metadata.json');
-const CACHE_DIR = path.join(PROJECT_ROOT, '.astro');
-const CACHE_PATH = path.join(CACHE_DIR, 'photos-cache.json');
-
 const IMG_EXTS = new Set(['.jpg', '.jpeg']);
 
-/**
- * Sizes (longest edge) and crop strategy.
- *   - 'cover'  → centre-cropped to a perfect square. Used by the round map
- *                markers so a portrait photo still fills the whole circle.
- *   - 'inside' → keeps original aspect ratio, longest edge fits the target.
- */
 export const THUMB_SPECS = {
-  s: { px: 200, fit: 'cover' as const },   // map marker (square)
-  m: { px: 400, fit: 'inside' as const },  // timeline grid
-  l: { px: 1200, fit: 'inside' as const }, // lightbox / detail
+  s: { px: 200, fit: 'cover' as const },
+  m: { px: 400, fit: 'inside' as const },
+  l: { px: 1200, fit: 'inside' as const },
 };
 export const THUMB_SIZES = {
   s: THUMB_SPECS.s.px,
@@ -53,112 +43,33 @@ export const THUMB_SIZES = {
 } as const;
 export type ThumbSize = keyof typeof THUMB_SPECS;
 
-export interface Photo {
-  /** Path relative to the shared folder root, e.g. "2024-tokyo/IMG_001.jpg". */
+// ---------- Public Photo type (what pages consume) ----------
+
+export interface PhotoView {
   path: string;
-  /** URL/file-system safe id derived from path. */
   id: string;
-  /** Bare filename (used as thumb storage key). */
   file: string;
-  /** Tiny base64 placeholder for skeleton/blur-up effect. */
   placeholder: string;
-  /** null when the photo has no EXIF GPS and no manual pin yet. */
   lat: number | null;
   lon: number | null;
-  /** True when lat/lon came from a metadata.json pin, not from EXIF. */
   manualLocation: boolean;
-  /** ISO 8601 (no Z), e.g. "2024-12-26T10:39:48". May be empty if EXIF was unreadable. */
   datetime: string;
-  /** True when the date came from metadata.json override (not EXIF). */
   manualDatetime: boolean;
-  /** Localised country name from reverse-geocode (e.g. "日本", "台灣"). Empty when no location. */
+  editable: boolean;
   country: string;
-  /** ISO 3166-1 alpha-2, lowercase (e.g. "jp", "tw"). */
   countryCode: string;
   title: string;
   album: string;
   description: string;
+  /** Camera / phone model from EXIF (e.g. "OPPO Reno10 Pro+ 5G"). Empty if unknown. */
+  camera: string;
+  favorite: boolean;
   thumbs: Record<ThumbSize, string>;
-  /** Direct Nextcloud download URL for the original. */
   originalUrl: string;
 }
 
-interface MetadataEntry {
-  title?: string;
-  album?: string;
-  description?: string;
-  /** User-pinned manual location for photos with no/wrong EXIF GPS. */
-  lat?: number;
-  lon?: number;
-  /** User-set date for photos with missing/wrong EXIF DateTimeOriginal. */
-  datetime?: string; // ISO "YYYY-MM-DD" or "YYYY-MM-DDTHH:MM:SS"
-}
-type Metadata = Record<string, MetadataEntry>;
+// ---------- Country normalisation ----------
 
-interface CacheEntry {
-  etag: string;
-  lat: number;
-  lon: number;
-  datetime: string;
-  thumbKey: string; // basename used in /thumbs/<size>/
-  country?: string;
-  countryCode?: string;
-  /** Tiny base64 data-URI for the skeleton placeholder (16px wide WebP). */
-  placeholder?: string;
-}
-type Cache = Record<string, CacheEntry>;
-
-// ---------- Reverse geocoding (country only) ----------
-
-/**
- * Coarse "is this the same place as last time?" cache to avoid hammering
- * Nominatim — adjacent photos are nearly always in the same country.
- * Key is the rounded lat/lon (0.5 degree ≈ 55 km).
- */
-const geoBucketCache = new Map<string, { country: string; countryCode: string }>();
-
-let lastGeoRequestAt = 0;
-async function rateLimitedNominatim(lat: number, lon: number): Promise<{ country: string; countryCode: string } | null> {
-  // Nominatim usage policy: max 1 req/sec, identifying User-Agent required.
-  const delta = Date.now() - lastGeoRequestAt;
-  if (delta < 1100) await new Promise((r) => setTimeout(r, 1100 - delta));
-  lastGeoRequestAt = Date.now();
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=jsonv2&zoom=3&accept-language=zh-TW,zh,en`;
-  try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'photo-portfolio/0.1 (https://github.com/ben/photo-portfolio)',
-        'Accept-Language': 'zh-TW,zh,en',
-      },
-    });
-    if (!res.ok) {
-      console.warn(`[photos] Nominatim ${res.status} for ${lat},${lon}`);
-      return null;
-    }
-    const data: any = await res.json();
-    // OSM `name` sometimes packs multiple language variants in one string
-    // separated by ";" or "/" — take the first.
-    const rawCountry = data?.address?.country || '';
-    const country = rawCountry.split(/[;/,]/)[0].trim();
-    const countryCode = (data?.address?.country_code || '').toLowerCase();
-    if (!country) return null;
-    return { country, countryCode };
-  } catch (err) {
-    console.warn(`[photos] reverse geocode failed:`, err);
-    return null;
-  }
-}
-
-async function getCountry(lat: number, lon: number): Promise<{ country: string; countryCode: string }> {
-  const bucketKey = `${Math.round(lat * 2) / 2},${Math.round(lon * 2) / 2}`;
-  const cached = geoBucketCache.get(bucketKey);
-  if (cached) return cached;
-  const result = (await rateLimitedNominatim(lat, lon)) ?? { country: '未知', countryCode: '' };
-  geoBucketCache.set(bucketKey, result);
-  return result;
-}
-
-/** Preferred zh-TW country name by ISO 3166-1 alpha-2. */
 const COUNTRY_NAME_TW: Record<string, string> = {
   jp: '日本', tw: '臺灣', cn: '中國', hk: '香港', mo: '澳門',
   my: '馬來西亞', sg: '新加坡', th: '泰國', vn: '越南', ph: '菲律賓',
@@ -172,29 +83,55 @@ const COUNTRY_NAME_TW: Record<string, string> = {
   eg: '埃及', za: '南非', ae: '阿聯酋', sa: '沙烏地阿拉伯', il: '以色列',
 };
 
-/**
- * Returns a clean, zh-TW country name from a (possibly multi-lingual) raw
- * Nominatim string and an ISO code. We prefer the curated override; otherwise
- * we strip multi-language separators ("德国;德國" → "德国").
- */
 function normalizeCountryName(raw: string, code?: string): string {
   if (code && COUNTRY_NAME_TW[code.toLowerCase()]) return COUNTRY_NAME_TW[code.toLowerCase()];
   return (raw || '').split(/[;/,]/)[0].trim();
 }
 
-// ---------- IO helpers ----------
+// ---------- Reverse geocoding ----------
 
-async function readJson<T>(p: string, fallback: T): Promise<T> {
+const geoBucketCache = new Map<string, { country: string; countryCode: string }>();
+let lastGeoRequestAt = 0;
+
+async function rateLimitedNominatim(lat: number, lon: number) {
+  const delta = Date.now() - lastGeoRequestAt;
+  if (delta < 1100) await new Promise((r) => setTimeout(r, 1100 - delta));
+  lastGeoRequestAt = Date.now();
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=jsonv2&zoom=3&accept-language=zh-TW,zh,en`;
   try {
-    return JSON.parse(await fs.readFile(p, 'utf-8'));
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'photo-portfolio/0.2',
+        'Accept-Language': 'zh-TW,zh,en',
+      },
+    });
+    if (!res.ok) return null;
+    const data: any = await res.json();
+    const country = (data?.address?.country || '').split(/[;/,]/)[0].trim();
+    const countryCode = (data?.address?.country_code || '').toLowerCase();
+    if (!country) return null;
+    return { country, countryCode };
   } catch {
-    return fallback;
+    return null;
   }
 }
 
-async function writeJson(p: string, data: unknown) {
-  await fs.mkdir(path.dirname(p), { recursive: true });
-  await fs.writeFile(p, JSON.stringify(data, null, 2), 'utf-8');
+async function getCountry(lat: number, lon: number) {
+  const bucketKey = `${Math.round(lat * 2) / 2},${Math.round(lon * 2) / 2}`;
+  const cached = geoBucketCache.get(bucketKey);
+  if (cached) return cached;
+  const result = (await rateLimitedNominatim(lat, lon)) ?? { country: '未知', countryCode: '' };
+  geoBucketCache.set(bucketKey, result);
+  return result;
+}
+
+// ---------- IO helpers ----------
+
+/** Coerces a value to a finite number, or `null` for null/undefined/NaN/Infinity. */
+function safeNum(v: unknown): number | null {
+  if (v === null || v === undefined || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 function exifDateToIso(dt: unknown): string {
@@ -215,29 +152,21 @@ function slugify(p: string): string {
     .replace(/\/+/g, '--');
 }
 
-/** A flat key suitable for `/thumbs/<size>/<key>.jpg` (extension stripped). */
 function thumbKey(relPath: string): string {
   return relPath.replace(/\.(jpe?g)$/i, '').replace(/[\/\\]/g, '__');
 }
 
-// ---------- WebDAV ----------
-
 function makeClient(): WebDAVClient {
   if (!NEXTCLOUD_URL || !SHARE_TOKEN) {
-    throw new Error(
-      'NEXTCLOUD_URL and NEXTCLOUD_SHARE_TOKEN must be set in .env'
-    );
+    throw new Error('NEXTCLOUD_URL and NEXTCLOUD_SHARE_TOKEN must be set in .env');
   }
-  // Public share endpoint
   return createClient(`${NEXTCLOUD_URL}/public.php/webdav`, {
     username: SHARE_TOKEN,
     password: SHARE_PASSWORD,
   });
 }
 
-/** Direct download URL for a file inside the public share. */
 function originalUrl(relPath: string): string {
-  // /s/TOKEN/download?path=<dir>&files=<basename>
   const dir = path.posix.dirname('/' + relPath);
   const file = path.posix.basename(relPath);
   const params = new URLSearchParams({ path: dir, files: file });
@@ -252,12 +181,6 @@ async function listFilesRecursive(client: WebDAVClient): Promise<FileStat[]> {
   return items.filter((it) => it.type === 'file' && IMG_EXTS.has(path.extname(it.basename).toLowerCase()));
 }
 
-// ---------- Thumbnail pipeline ----------
-
-/**
- * Generate a tiny WebP (16px wide, ~200 bytes) for use as a CSS background
- * skeleton while the real thumb downloads. Returns a data URI.
- */
 async function makePlaceholder(buf: Buffer): Promise<string> {
   const tiny = await sharp(buf)
     .rotate()
@@ -298,195 +221,300 @@ async function cleanupOrphanThumbs(liveKeys: Set<string>): Promise<number> {
         }
       }
     } catch {
-      /* dir doesn't exist — fine */
+      /* dir missing — fine */
     }
   }
   return removed;
 }
 
-// ---------- Public API ----------
+// ---------- Sync: Nextcloud → DB ----------
 
-let cache: { photos: Photo[]; loadedAt: number } | null = null;
+let syncing: Promise<void> | null = null;
+let lastSync = 0;
+const SYNC_TTL_MS = 5_000; // re-list Nextcloud at most every 5s
 
-export async function getPhotos(opts: { force?: boolean } = {}): Promise<Photo[]> {
-  if (cache && !opts.force) return cache.photos;
+/** Force the next read to re-list Nextcloud. */
+export function invalidatePhotoSync() {
+  lastSync = 0;
+}
 
-  const client = makeClient();
-  const [files, metadata, fileCache] = await Promise.all([
-    listFilesRecursive(client),
-    readJson<Metadata>(METADATA_PATH, {}),
-    readJson<Cache>(CACHE_PATH, {}),
-  ]);
+async function syncFromNextcloud() {
+  if (syncing) return syncing;
+  if (Date.now() - lastSync < SYNC_TTL_MS) return;
 
-  console.log(`[photos] Nextcloud: found ${files.length} image file(s)`);
+  syncing = (async () => {
+    const client = makeClient();
+    const files = await listFilesRecursive(client);
 
-  let metadataChanged = false;
-  let cacheChanged = false;
-  let downloaded = 0;
-  let skipped = 0;
-  const photos: Photo[] = [];
-  const liveThumbKeys = new Set<string>();
+    // Snapshot existing DB rows by path for quick lookup.
+    const existingRows = await db.select().from(PhotoTable);
+    const byPath = new Map(existingRows.map((r) => [r.path, r]));
+    const livePaths = new Set<string>();
+    const liveThumbKeys = new Set<string>();
 
-  for (const item of files) {
-    const relPath = item.filename.replace(/^\/+/, '');
-    const etag = String(item.etag ?? item.lastmod ?? '');
-    const key = thumbKey(relPath);
-    liveThumbKeys.add(key);
+    let downloaded = 0;
+    let skipped = 0;
 
-    const cached = fileCache[relPath];
-    const metaEntry = metadata[relPath];
-    let lat: number | null = null;
-    let lon: number | null = null;
-    let datetime: string = '';
-    let country: string = '';
-    let countryCode: string = '';
-    let manualLocation = false;
-    let manualDatetime = !!metaEntry?.datetime;
+    for (const item of files) {
+      const relPath = item.filename.replace(/^\/+/, '');
+      const etag = String(item.etag ?? item.lastmod ?? '');
+      const key = thumbKey(relPath);
+      livePaths.add(relPath);
+      liveThumbKeys.add(key);
 
-    // Cache hit needs to also match the manual-location AND manual-datetime
-    // overrides (if any) — otherwise editing them wouldn't take effect.
-    const manualLocMatches =
-      metaEntry?.lat === undefined ||
-      (cached?.lat === metaEntry.lat && cached?.lon === metaEntry.lon);
-    const manualDateMatches =
-      metaEntry?.datetime === undefined ||
-      cached?.datetime?.startsWith(metaEntry.datetime);
+      const existing = byPath.get(relPath);
+      // Re-process when:
+      //   - row doesn't exist yet
+      //   - etag changed on Nextcloud
+      //   - seeded etag is empty (legacy migration data, EXIF columns unreliable)
+      if (existing && existing.etag === etag && etag !== '') {
+        skipped++;
+        continue;
+      }
 
-    if (cached && cached.etag === etag && cached.country !== undefined && manualLocMatches && manualDateMatches) {
-      lat = (cached.lat as number | null) ?? null;
-      lon = (cached.lon as number | null) ?? null;
-      datetime = cached.datetime;
-      country = cached.country;
-      countryCode = cached.countryCode || '';
-      manualLocation = !!metaEntry?.lat;
-      skipped++;
-    } else {
-      // Download the file once for EXIF + thumbnails
+      // Need to (re-)process: download, EXIF, thumbs, placeholder, geocode.
       const raw = await client.getFileContents(item.filename);
       const buf: Buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw as ArrayBuffer);
       downloaded++;
-      // exifr's `pick` filters out the computed `latitude`/`longitude` fields,
-      // so we parse without it. Pulling only EXIF + GPS segments keeps it fast.
-      let latitude: number | undefined;
-      let longitude: number | undefined;
-      let dt: unknown;
+
+      let exifLat: number | undefined;
+      let exifLon: number | undefined;
+      let exifDt: string | undefined;
+      let camera = '';
       try {
         const parsed = await exifr.parse(buf, {
-          ifd0: false,
+          ifd0: ['Make', 'Model'],
           exif: ['DateTimeOriginal'],
           gps: true,
-          interop: false,
-          thumbnail: false,
-          iptc: false,
-          icc: false,
-          xmp: false,
-          jfif: false,
+          interop: false, thumbnail: false, iptc: false, icc: false, xmp: false, jfif: false,
         });
-        latitude = parsed?.latitude;
-        longitude = parsed?.longitude;
-        dt = parsed?.DateTimeOriginal;
+        exifLat = safeNum(parsed?.latitude) ?? undefined;
+        exifLon = safeNum(parsed?.longitude) ?? undefined;
+        exifDt = exifDateToIso(parsed?.DateTimeOriginal);
+        // Compose camera string: drop Make if Model already starts with it
+        // (avoids "OPPO OPPO Reno10..." duplication).
+        const make = (parsed?.Make || '').trim();
+        const model = (parsed?.Model || '').trim();
+        if (model && make && model.toLowerCase().startsWith(make.toLowerCase())) camera = model;
+        else if (make && model) camera = `${make} ${model}`;
+        else camera = model || make;
       } catch {
         /* unreadable */
       }
-      // Manual location/datetime from metadata overrides EXIF.
-      if (metaEntry?.lat !== undefined && metaEntry?.lon !== undefined) {
-        latitude = metaEntry.lat;
-        longitude = metaEntry.lon;
-        manualLocation = true;
-      }
-      if (metaEntry?.datetime) {
-        // Accept either "YYYY-MM-DD" or full ISO; normalise.
-        const d = metaEntry.datetime;
-        dt = d.length === 10 ? `${d}T00:00:00` : d;
-      }
-      datetime = exifDateToIso(dt);
 
-      // Always generate thumbs + placeholder, even for photos without a location.
       await ensureThumbsFromBuffer(buf, key);
       const placeholder = await makePlaceholder(buf);
 
-      if (latitude && longitude) {
-        lat = latitude;
-        lon = longitude;
-        const geo = await getCountry(lat, lon);
-        country = geo.country;
+      // Preserve user fields and any prior manual overrides from existing row.
+      const manualLatExisting = existing && existing.lat !== existing.exifLat ? existing.lat : null;
+      const manualLonExisting = existing && existing.lon !== existing.exifLon ? existing.lon : null;
+      const manualDtExisting = existing && existing.datetime && existing.datetime !== existing.exifDatetime
+        ? existing.datetime : null;
+
+      const finalLat = manualLatExisting ?? exifLat ?? null;
+      const finalLon = manualLonExisting ?? exifLon ?? null;
+      const finalDt = manualDtExisting || exifDt || '';
+
+      let country: string | null = null;
+      let countryCode: string | null = null;
+      if (finalLat !== null && finalLon !== null) {
+        const geo = await getCountry(finalLat, finalLon);
+        country = normalizeCountryName(geo.country, geo.countryCode);
         countryCode = geo.countryCode;
       } else {
-        // No GPS yet — photo still shows up in a "未定位" bucket so the user
-        // can open its detail page and pin a location.
         country = '未定位';
         countryCode = '';
-        console.warn(`[photos] ${relPath} → no GPS yet (kept in 未定位)`);
       }
-      fileCache[relPath] = {
+
+      const row = {
         etag,
-        lat: lat as number,
-        lon: lon as number,
-        datetime,
+        file: path.posix.basename(relPath),
         thumbKey: key,
+        placeholder,
+        lat: safeNum(finalLat),
+        lon: safeNum(finalLon),
+        datetime: finalDt || null,
         country,
         countryCode,
-        placeholder,
+        exifLat: safeNum(exifLat),
+        exifLon: safeNum(exifLon),
+        exifDatetime: exifDt || null,
+        camera: camera || null,
+        updatedAt: new Date(),
       };
-      cacheChanged = true;
+      if (existing) {
+        await db.update(PhotoTable).set(row).where(eq(PhotoTable.path, relPath));
+      } else {
+        await db.insert(PhotoTable).values({
+          path: relPath,
+          ...row,
+          title: '',
+          album: '',
+          description: '',
+        });
+      }
     }
 
-    if (!metadata[relPath]) {
-      metadata[relPath] = { title: '', album: '', description: '' };
-      metadataChanged = true;
+    // Delete DB rows + thumbs for files removed from Nextcloud.
+    for (const r of existingRows) {
+      if (!livePaths.has(r.path)) {
+        await db.delete(PhotoTable).where(eq(PhotoTable.path, r.path));
+      }
     }
-    const md = metadata[relPath];
+    const removedThumbs = await cleanupOrphanThumbs(liveThumbKeys);
 
-    photos.push({
-      path: relPath,
-      id: slugify(relPath),
-      file: path.posix.basename(relPath),
-      placeholder: fileCache[relPath]?.placeholder || '',
-      lat,
-      lon,
-      manualLocation,
-      datetime,
-      manualDatetime,
-      country: normalizeCountryName(country, countryCode),
-      countryCode,
-      title: md.title || '',
-      album: md.album || '',
-      description: md.description || '',
-      thumbs: Object.fromEntries(
-        // Percent-encode the filename so non-ASCII (e.g. Chinese folder names
-        // baked into `key`) survives every browser / proxy / Vite middleware.
-        Object.keys(THUMB_SPECS).map((s) => [s, `/thumbs/${s}/${encodeURIComponent(key)}.webp`])
-      ) as Record<ThumbSize, string>,
-      originalUrl: originalUrl(relPath),
-    });
-  }
+    lastSync = Date.now();
+    console.log(`[photos] sync: ${files.length} on Nextcloud, ${downloaded} processed, ${skipped} unchanged, ${removedThumbs} orphan thumbs removed`);
+  })();
 
-  // Remove stale cache entries (files deleted in Nextcloud)
-  const liveRel = new Set(photos.map((p) => p.path));
-  for (const k of Object.keys(fileCache)) {
-    if (!liveRel.has(k)) {
-      delete fileCache[k];
-      cacheChanged = true;
-    }
-  }
-
-  const removed = await cleanupOrphanThumbs(liveThumbKeys);
-  if (metadataChanged) await writeJson(METADATA_PATH, metadata);
-  if (cacheChanged) await writeJson(CACHE_PATH, fileCache);
-
-  photos.sort((a, b) => a.datetime.localeCompare(b.datetime));
-  cache = { photos, loadedAt: Date.now() };
-
-  console.log(
-    `[photos] ready: ${photos.length} photos, ${downloaded} downloaded, ${skipped} cached, ${removed} stale thumbs removed`
-  );
-  return photos;
+  try { await syncing; }
+  finally { syncing = null; }
 }
 
-export function clearPhotoCache() {
-  cache = null;
+// ---------- Row → PhotoView projection ----------
+
+function rowToView(r: any): PhotoView {
+  const lat: number | null = r.lat ?? null;
+  const lon: number | null = r.lon ?? null;
+  const datetime: string = r.datetime || '';
+  const manualLocation = lat !== null && (r.exifLat === null || r.exifLat === undefined || lat !== r.exifLat);
+  const manualDatetime = !!datetime && datetime !== (r.exifDatetime || '');
+  const country = r.country || '';
+  const countryCode = r.countryCode || '';
+  const key = r.thumbKey as string;
+  const editable =
+    lat === null || lon === null || manualLocation || !datetime || manualDatetime;
+  return {
+    path: r.path,
+    id: slugify(r.path),
+    file: r.file,
+    placeholder: r.placeholder || '',
+    lat, lon,
+    manualLocation,
+    datetime,
+    manualDatetime,
+    editable,
+    country: normalizeCountryName(country, countryCode),
+    countryCode,
+    title: r.title || '',
+    album: r.album || '',
+    description: r.description || '',
+    camera: r.camera || '',
+    favorite: !!r.favorite,
+    thumbs: {
+      s: `/thumbs/s/${encodeURIComponent(key)}.webp`,
+      m: `/thumbs/m/${encodeURIComponent(key)}.webp`,
+      l: `/thumbs/l/${encodeURIComponent(key)}.webp`,
+    },
+    originalUrl: originalUrl(r.path),
+  };
 }
 
-export async function getPhotoById(id: string): Promise<Photo | undefined> {
-  return (await getPhotos()).find((p) => p.id === id);
+// ---------- Public read API ----------
+
+export async function getPhotos(): Promise<PhotoView[]> {
+  await syncFromNextcloud();
+  const rows = await db.select().from(PhotoTable);
+  return rows
+    .map(rowToView)
+    .sort((a, b) => (a.datetime || '').localeCompare(b.datetime || ''));
+}
+
+export async function getPhotoById(id: string): Promise<PhotoView | undefined> {
+  const photos = await getPhotos();
+  return photos.find((p) => p.id === id);
+}
+
+export async function getPhotoByPath(p: string): Promise<PhotoView | undefined> {
+  const rows = await db.select().from(PhotoTable).where(eq(PhotoTable.path, p));
+  return rows[0] ? rowToView(rows[0]) : undefined;
+}
+
+// ---------- Mutation API (used by /api/metadata) ----------
+
+/**
+ * Permanently delete a photo: removes the file from Nextcloud, the DB row,
+ * and all on-disk thumbnails. Same share token (with edit permission) is used.
+ */
+export async function deletePhoto(p: string): Promise<boolean> {
+  const rows = await db.select().from(PhotoTable).where(eq(PhotoTable.path, p));
+  const existing = rows[0];
+  if (!existing) return false;
+
+  try {
+    const client = makeClient();
+    await client.deleteFile('/' + p);
+  } catch (err) {
+    console.warn(`[photos] Nextcloud DELETE failed for ${p}:`, err);
+  }
+  await db.delete(PhotoTable).where(eq(PhotoTable.path, p));
+  for (const size of Object.keys(THUMB_SPECS)) {
+    const out = path.join(THUMBS_DIR, size, `${existing.thumbKey}.webp`);
+    await fs.unlink(out).catch(() => undefined);
+  }
+  return true;
+}
+
+export async function updatePhoto(
+  p: string,
+  patch: {
+    title?: string;
+    album?: string;
+    description?: string;
+    /** Pass `null` to clear a manual override and revert to EXIF. */
+    lat?: number | null;
+    lon?: number | null;
+    datetime?: string | null;
+    favorite?: boolean;
+  }
+): Promise<PhotoView | null> {
+  const rows = await db.select().from(PhotoTable).where(eq(PhotoTable.path, p));
+  const existing = rows[0];
+  if (!existing) return null;
+
+  const updates: any = { updatedAt: new Date() };
+  if (patch.title !== undefined) updates.title = patch.title;
+  if (patch.album !== undefined) updates.album = patch.album;
+  if (patch.description !== undefined) updates.description = patch.description;
+  if (patch.favorite !== undefined) updates.favorite = !!patch.favorite;
+
+  let nextLat: number | null = existing.lat ?? null;
+  let nextLon: number | null = existing.lon ?? null;
+  if (patch.lat !== undefined && patch.lon !== undefined) {
+    if (patch.lat === null || patch.lon === null) {
+      // Reverting: fall back to EXIF original (which may itself be null).
+      nextLat = existing.exifLat ?? null;
+      nextLon = existing.exifLon ?? null;
+    } else {
+      nextLat = Number(patch.lat);
+      nextLon = Number(patch.lon);
+    }
+    updates.lat = nextLat;
+    updates.lon = nextLon;
+  }
+
+  if (patch.datetime !== undefined) {
+    if (patch.datetime === null || patch.datetime === '') {
+      updates.datetime = existing.exifDatetime ?? null;
+    } else {
+      const d = patch.datetime;
+      updates.datetime = d.length === 10 ? `${d}T00:00:00` : d;
+    }
+  }
+
+  // Re-geocode country if location changed (or was nulled).
+  if ('lat' in updates) {
+    if (nextLat !== null && nextLon !== null) {
+      const geo = await getCountry(nextLat, nextLon);
+      updates.country = normalizeCountryName(geo.country, geo.countryCode);
+      updates.countryCode = geo.countryCode;
+    } else {
+      updates.country = '未定位';
+      updates.countryCode = '';
+    }
+  }
+
+  await db.update(PhotoTable).set(updates).where(eq(PhotoTable.path, p));
+  const updated = await db.select().from(PhotoTable).where(eq(PhotoTable.path, p));
+  return updated[0] ? rowToView(updated[0]) : null;
 }

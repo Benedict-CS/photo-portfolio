@@ -1,5 +1,5 @@
 ---
-import type { Photo } from '~/lib/photos';
+import type { PhotoView as Photo } from '~/lib/photos';
 
 interface Props {
   photos: Photo[];
@@ -7,11 +7,10 @@ interface Props {
 }
 const { photos, active } = Astro.props;
 
-// "未定位" is a UI bucket, not a real country — exclude it from the count.
 const countries = new Set(
   photos.map((p) => p.country).filter((c) => c && c !== '未定位')
 );
-const dates = photos.map((p) => p.datetime.slice(0, 10)).sort();
+const dates = photos.map((p) => p.datetime?.slice(0, 10) || '').filter(Boolean).sort();
 const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1].slice(0, 4)}` : '';
 ---
 <header id="topbar">
@@ -23,5 +22,95 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
   <nav>
     <a href="/" class={active === 'map' ? 'active' : ''}>🗺️ 地圖</a>
     <a href="/timeline" class={active === 'timeline' ? 'active' : ''}>📅 Timeline</a>
+    <a href="/favorites" title="收藏">⭐</a>
+    <a href="/admin" class="admin-link edit-only" title="Admin Dashboard">⚙️</a>
+    <button id="auth-btn" type="button" class="auth-btn" title="管理員登入 / 登出">
+      <span class="auth-icon">🔓</span>
+      <span class="auth-label">登入</span>
+    </button>
   </nav>
 </header>
+
+<style is:global>
+  #topbar .auth-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    background: none;
+    border: 1px solid transparent;
+    color: var(--muted);
+    cursor: pointer;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  #topbar .auth-btn:hover { background: #f3f4f6; color: var(--text); }
+  #topbar .auth-btn.logged-in { color: #1a8a3a; }
+  #topbar .auth-btn.logged-in .auth-icon::before { content: '🔒'; }
+  #topbar .auth-btn .auth-icon::before { content: '🔓'; }
+  #topbar .auth-btn .auth-icon { display: none; }
+
+  #topbar .random-btn,
+  #topbar .admin-link {
+    font-size: 14px;
+    padding: 5px 10px;
+    border-radius: 6px;
+    color: var(--muted);
+  }
+  #topbar .random-btn:hover,
+  #topbar .admin-link:hover {
+    background: #f3f4f6;
+    text-decoration: none;
+    transform: scale(1.1);
+  }
+</style>
+
+<script>
+  const TOKEN_KEY = 'photo-admin-token';
+  const btn = document.getElementById('auth-btn') as HTMLButtonElement;
+  const label = btn?.querySelector('.auth-label') as HTMLElement;
+
+  function refresh() {
+    if (!btn) return;
+    const has = !!localStorage.getItem(TOKEN_KEY);
+    btn.classList.toggle('logged-in', has);
+    label.textContent = has ? '🔒 已登入' : '🔓 登入';
+    // Toggle a body class so any element marked `.edit-only` is hidden
+    // when not logged in — keeps the UI honest with permissions.
+    document.body.classList.toggle('logged-in', has);
+    document.body.classList.toggle('logged-out', !has);
+  }
+  refresh();
+  // Listen for cross-tab changes (logout in another tab → this tab updates).
+  window.addEventListener('storage', (e) => { if (e.key === TOKEN_KEY) refresh(); });
+  // Custom event other components can dispatch after a successful save.
+  window.addEventListener('auth:changed', refresh);
+
+  btn?.addEventListener('click', async () => {
+    const has = !!localStorage.getItem(TOKEN_KEY);
+    if (has) {
+      if (confirm('要登出嗎?之後編輯會再問你密碼。')) {
+        localStorage.removeItem(TOKEN_KEY);
+        refresh();
+        window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'info', message: '已登出' } }));
+      }
+      return;
+    }
+    const pw = await (window as any).promptPassword('請輸入管理員密碼');
+    if (!pw) return;
+    // Verify by hitting an auth-only route. Pass nothing → 400 (authed) or 401 (not).
+    const r = await fetch('/api/metadata', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${pw}` },
+      body: JSON.stringify({}),
+    });
+    if (r.status === 401) {
+      window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'error', message: '密碼錯誤' } }));
+      return;
+    }
+    localStorage.setItem(TOKEN_KEY, pw);
+    refresh();
+    window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'success', message: '已登入' } }));
+  });
+</script>
