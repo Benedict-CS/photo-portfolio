@@ -16,9 +16,15 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     <main id="main">
       <div id="map"></div>
       <div id="map-toolbar">
-        <button id="mode-markers" class="map-mode-btn active" title="Markers">📍</button>
-        <button id="mode-routes" class="map-mode-btn" title="Trip routes (same country + ≤7 day gap)">⚡</button>
-        <button id="ts-toggle" class="map-mode-btn" type="button" title="Time slider">🕐</button>
+        <button id="mode-markers" class="map-mode-btn active" title="Markers">
+          <span class="emoji">📍</span><span class="label">Markers</span>
+        </button>
+        <button id="mode-routes" class="map-mode-btn" title="Trip routes (same country + ≤7 day gap)">
+          <span class="emoji">⚡</span><span class="label">Trips</span>
+        </button>
+        <button id="ts-toggle" class="map-mode-btn" type="button" title="Time slider">
+          <span class="emoji">🕐</span><span class="label">Time</span>
+        </button>
       </div>
       <div id="time-slider" hidden>
         <div class="ts-labels">
@@ -50,17 +56,30 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     background: none;
     border: none;
     cursor: pointer;
-    /* WCAG SC 2.5.5: 44×44 minimum touch target — keep the visible pill
-       compact, but expand the hit area with padding on touch viewports. */
-    width: 44px;
+    /* WCAG SC 2.5.5: 44×44 minimum touch target. Buttons grow horizontally
+       to accommodate their text labels on desktop. */
+    min-width: 44px;
     height: 44px;
+    padding: 0 14px;
     border-radius: 999px;
-    font-size: 16px;
+    font-size: 13px;
     color: var(--text);
-    transition: background 0.15s;
+    transition: background 0.15s, color 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: inherit;
   }
+  .map-mode-btn .emoji { font-size: 16px; line-height: 1; }
+  .map-mode-btn .label { font-weight: 500; }
   .map-mode-btn:hover { background: #f3f4f6; }
   .map-mode-btn.active { background: var(--accent); color: white; }
+
+  /* Narrow viewports: collapse to emoji-only so the pill fits any phone. */
+  @media (max-width: 540px) {
+    .map-mode-btn { padding: 0; width: 44px; }
+    .map-mode-btn .label { display: none; }
+  }
 
   /* Time slider lives next to the markers / routes mode buttons (bottom-left). */
   #time-slider {

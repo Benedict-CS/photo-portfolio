@@ -91,11 +91,13 @@ const firstThumbs = countries.length
 
       <div class="timeline-feed">
         <div class="select-hint edit-only">
-          <kbd>Ctrl/Cmd</kbd> + click to multi-select · <kbd>Shift</kbd> + click for range · then use the bottom bar
+          Bulk-favorite: <kbd>Ctrl/Cmd</kbd>+click for multi, <kbd>Shift</kbd>+click for range, then ⭐ at the bottom.
         </div>
         {countries.length === 0 ? (
           <div class="empty-state">
-            <p>No photos yet. Upload JPEGs with GPS to your Nextcloud share.</p>
+            <div class="empty-icon">📭</div>
+            <p class="empty-title">Nothing here yet</p>
+            <p class="empty-hint">Drop some JPEGs (with GPS metadata, ideally) into the Nextcloud share — they show up here on the next sync.</p>
           </div>
         ) : (
           countries.map((c) => (
@@ -108,7 +110,7 @@ const firstThumbs = countries.length
                 </div>
               </header>
               {c.months.map((m) => (
-                <div class="month-block">
+                <div class="month-block" data-ym={m.ym}>
                   <h3 class="month-label">{m.monthLabel}<span class="month-count"> · {m.photos.length}</span></h3>
                   <div
                     class="justified-grid"
@@ -303,6 +305,8 @@ const firstThumbs = countries.length
     letter-spacing: 0.02em;
   }
   .month-count { color: var(--muted); font-weight: 400; }
+  /* "Unknown date" gets visually demoted so it doesn't read like a real month. */
+  .month-block[data-ym="unknown"] .month-label { font-style: italic; opacity: 0.7; }
 
   .justified-grid { display: flex; flex-wrap: wrap; gap: 4px; }
   .justified-cell {
@@ -422,7 +426,18 @@ const firstThumbs = countries.length
     color: var(--text);
   }
 
-  .empty-state { padding: 80px 20px; text-align: center; color: var(--muted); }
+  .empty-state {
+    padding: 100px 20px;
+    text-align: center;
+    color: var(--muted);
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .empty-state .empty-icon { font-size: 64px; margin-bottom: 14px; opacity: 0.55; }
+  .empty-state .empty-title {
+    font-size: 20px; font-weight: 600; color: var(--text); margin: 0 0 6px;
+  }
+  .empty-state .empty-hint { font-size: 14px; line-height: 1.55; margin: 0; }
 
   @media (max-width: 720px) {
     .timeline-main { grid-template-columns: 1fr; }

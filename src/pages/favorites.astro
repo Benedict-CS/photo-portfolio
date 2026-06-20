@@ -18,7 +18,17 @@ favorites.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
       </header>
       {favorites.length === 0 ? (
         <div class="empty-state">
-          <p>No favorites yet.<br />Open a photo and tap ☆ to add it here.</p>
+          <div class="empty-icon">⭐</div>
+          <p class="empty-title">No favorites yet</p>
+          {/* Visitors and admin see different next-step copy. CSS hides
+              the irrelevant line based on body.logged-in. */}
+          <p class="empty-hint logged-out-only">
+            The curator hasn't pinned anything here yet — try the
+            <a href="/">map</a> or <a href="/timeline">timeline</a> instead.
+          </p>
+          <p class="empty-hint logged-in-only">
+            Open any photo and tap the ☆ in its info bar to add it here.
+          </p>
         </div>
       ) : (
         <div class="favs-grid">
@@ -96,8 +106,27 @@ favorites.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
   }
   .fav-card .flag { font-size: 16px; }
   .empty-state {
-    padding: 80px 20px;
+    padding: 100px 20px;
     text-align: center;
     color: var(--muted);
+    max-width: 480px;
+    margin: 0 auto;
   }
+  .empty-state .empty-icon {
+    font-size: 64px;
+    margin-bottom: 14px;
+    opacity: 0.55;
+  }
+  .empty-state .empty-title {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text);
+    margin: 0 0 6px;
+  }
+  .empty-state .empty-hint {
+    font-size: 14px;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .empty-state .empty-hint a { color: var(--accent); }
 </style>

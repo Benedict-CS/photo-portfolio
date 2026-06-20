@@ -24,6 +24,10 @@ html, body {
 
 /* Editing affordances are hidden until the user has logged in (top-right). */
 body:not(.logged-in) .edit-only { display: none !important; }
+/* Twin classes for copy that differs by role — e.g. empty-state hints
+   that tell a visitor "no curated photos yet" vs an admin "tap ☆ to add". */
+body:not(.logged-in) .logged-in-only { display: none !important; }
+body.logged-in .logged-out-only { display: none !important; }
 
 /* ---- Subtle page-load fade so every navigation feels intentional. ---- */
 @keyframes page-fade-in {
@@ -104,108 +108,6 @@ a:hover { text-decoration: underline; }
 @media (max-width: 600px) {
   #topbar .brand .stats { display: none; }
 }
-#sidebar header {
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-}
-#sidebar h1 {
-  margin: 0 0 4px;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-#sidebar h1 a { color: inherit; }
-#sidebar nav { display: flex; gap: 8px; margin-top: 8px; }
-#sidebar nav a {
-  font-size: 12px;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: #f0f0f0;
-  color: var(--muted);
-}
-#sidebar nav a.active { background: var(--accent-bg); color: var(--accent); }
-.stats { font-size: 11px; color: var(--muted); margin-top: 6px; }
-
-#controls {
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  font-size: 12px;
-}
-#controls input, #controls select {
-  width: 100%;
-  padding: 5px 7px;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: inherit;
-}
-#controls .row { display: flex; gap: 6px; }
-#controls .row > * { flex: 1; }
-button.ctrl {
-  padding: 5px 8px;
-  border: 1px solid var(--border);
-  background: #f5f5f5;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
-  font-family: inherit;
-}
-button.ctrl:hover { background: #ececec; }
-
-#photo-list {
-  flex: 1;
-  overflow-y: auto;
-  contain: strict;  /* helps long-list perf */
-}
-.photo-row {
-  display: flex;
-  gap: 8px;
-  padding: 8px 10px;
-  border-bottom: 1px solid #f0f0f0;
-  cursor: pointer;
-}
-.photo-row:hover { background: #f5f9ff; }
-.photo-row.active { background: var(--accent-bg); }
-.photo-row img {
-  width: 60px;
-  height: 60px;
-  object-fit: cover;
-  border-radius: 3px;
-  flex-shrink: 0;
-  background: #eee;
-}
-.photo-row .meta { min-width: 0; flex: 1; }
-.photo-row .title {
-  font-size: 12px;
-  font-weight: 600;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.photo-row .title.empty {
-  color: var(--muted);
-  font-weight: 400;
-  font-style: italic;
-}
-.photo-row .sub {
-  font-size: 11px;
-  color: var(--muted);
-  margin-top: 2px;
-}
-.photo-row .album {
-  display: inline-block;
-  font-size: 10px;
-  background: #eef;
-  color: #336;
-  padding: 1px 5px;
-  border-radius: 8px;
-  margin-top: 3px;
-}
-
 /* ---- Main panel ---- */
 #main { position: relative; flex: 1; min-height: 0; }
 #map {
@@ -215,48 +117,6 @@ button.ctrl:hover { background: #ececec; }
      instead of showing the default Leaflet grey. */
   background: #f8f4f0;
 }
-
-#grid {
-  height: 100%;
-  overflow-y: auto;
-  padding: 16px;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
-  background: var(--bg);
-}
-.grid-card {
-  background: var(--panel);
-  border-radius: 6px;
-  overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.08);
-  transition: transform 0.1s, box-shadow 0.1s;
-  display: flex;
-  flex-direction: column;
-}
-.grid-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-}
-.grid-card img {
-  width: 100%;
-  height: 170px;
-  object-fit: cover;
-  display: block;
-  background: #eee;
-  cursor: zoom-in;
-}
-.grid-card .info { padding: 8px 10px; }
-.grid-card .title {
-  font-size: 13px;
-  font-weight: 600;
-  display: block;
-  color: inherit;
-}
-.grid-card .title.empty { color: var(--muted); font-weight: 400; font-style: italic; }
-.grid-card .sub { font-size: 11px; color: var(--muted); margin-top: 3px; }
-
-.hidden { display: none !important; }
 
 /* Hide Leaflet attribution per user preference. Note: OSM/CARTO licences
    ask for visible attribution on public sites — keep this in mind if you
