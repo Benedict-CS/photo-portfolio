@@ -170,14 +170,20 @@ const photos = await getPhotos();
 </style>
 
 <script>
+  // ClientRouter swaps the body on each navigation, so this <script>'s
+  // module-level DOM references go stale. Wrap setup in a function and
+  // re-run it on every astro:page-load. Returns early if not on /upload.
   const TOKEN_KEY = 'photo-admin-token';
-  const dropzone = document.getElementById('dropzone') as HTMLLabelElement;
-  const input = document.getElementById('file-input') as HTMLInputElement;
-  const listEl = document.getElementById('upload-list') as HTMLUListElement;
-  const actions = document.getElementById('upload-actions') as HTMLDivElement;
-  const startBtn = document.getElementById('start-upload') as HTMLButtonElement;
-  const clearBtn = document.getElementById('clear-queue') as HTMLButtonElement;
-  const queueCountEl = document.getElementById('queue-count') as HTMLSpanElement;
+
+  function setup() {
+    const dropzone = document.getElementById('dropzone') as HTMLLabelElement | null;
+    const input = document.getElementById('file-input') as HTMLInputElement | null;
+    const listEl = document.getElementById('upload-list') as HTMLUListElement | null;
+    const actions = document.getElementById('upload-actions') as HTMLDivElement | null;
+    const startBtn = document.getElementById('start-upload') as HTMLButtonElement | null;
+    const clearBtn = document.getElementById('clear-queue') as HTMLButtonElement | null;
+    const queueCountEl = document.getElementById('queue-count') as HTMLSpanElement | null;
+    if (!dropzone || !input || !listEl || !actions || !startBtn || !clearBtn || !queueCountEl) return;
 
   type Queued = { file: File; el: HTMLLIElement; status: 'pending' | 'uploading' | 'ok' | 'err' };
   const queue: Queued[] = [];
@@ -333,11 +339,22 @@ const photos = await getPhotos();
     const pending = queue.filter((q) => q.status === 'pending');
     if (!pending.length) return;
     startBtn.disabled = true;
-    // API caps at 20 files per request — chunk the queue accordingly.
-    const CHUNK = 20;
-    for (let i = 0; i < pending.length; i += CHUNK) {
-      await uploadBatch(pending.slice(i, i + CHUNK));
+    try {
+      // API caps at 20 files per request — chunk the queue accordingly.
+      const CHUNK = 20;
+      for (let i = 0; i < pending.length; i += CHUNK) {
+        await uploadBatch(pending.slice(i, i + CHUNK));
+      }
+    } finally {
+      // Always refresh — refreshUI() picks the correct disabled state
+      // based on whether any items are still 'pending'. Without this in
+      // finally, a thrown error inside uploadBatch would leave the
+      // Upload button locked forever.
+      refreshUI();
     }
-    refreshUI();
   });
+  } // end setup()
+
+  setup();
+  document.addEventListener('astro:page-load', setup);
 </script>

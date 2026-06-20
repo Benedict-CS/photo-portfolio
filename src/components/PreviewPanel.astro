@@ -17,49 +17,62 @@
 </div>
 
 <script>
-  const panel = document.getElementById('preview')!;
-  const hero = document.getElementById('preview-hero');
-  const datetimeEl = document.getElementById('preview-datetime')!;
-  const downloadEl = document.getElementById('preview-download');
-  const editEl = document.getElementById('preview-edit');
+  // ClientRouter swaps the body on each navigation, so DOM refs and
+  // listeners attached at module load go stale. Re-bind on every
+  // astro:page-load — early-return if the page doesn't actually carry
+  // the preview chrome (PreviewPanel only renders on /).
+  let cleanupPreview: (() => void) | null = null;
+  let currentPhoto: any = null;
 
-  let currentPhoto = null;
+  function setup() {
+    cleanupPreview?.();
+    const ac = new AbortController();
+    const signal = ac.signal;
+    cleanupPreview = () => ac.abort();
 
-  function open(photo: any) {
-    currentPhoto = photo;
-    hero.src = photo.thumbs.l;
-    hero.alt = photo.album || photo.file;
-    const dt = photo.datetime ? photo.datetime.slice(0, 10) : '';
-    datetimeEl.textContent = dt ? `📅 ${dt}` : '';
-    datetimeEl.style.display = dt ? '' : 'none';
-    downloadEl.href = photo.originalUrl;
-    // Only show the edit shortcut for photos that have something the user can fill in.
-    if (photo.editable) {
-      editEl.href = `/photos/${photo.id}?pin=1`;
-      editEl.style.display = '';
-    } else {
-      editEl.style.display = 'none';
+    const panel = document.getElementById('preview');
+    const hero = document.getElementById('preview-hero') as HTMLImageElement | null;
+    const datetimeEl = document.getElementById('preview-datetime');
+    const downloadEl = document.getElementById('preview-download') as HTMLAnchorElement | null;
+    const editEl = document.getElementById('preview-edit') as HTMLAnchorElement | null;
+    if (!panel || !hero || !datetimeEl || !downloadEl || !editEl) return;
+
+    function open(photo: any) {
+      currentPhoto = photo;
+      hero.src = photo.thumbs.l;
+      hero.alt = photo.album || photo.file;
+      const dt = photo.datetime ? photo.datetime.slice(0, 10) : '';
+      datetimeEl.textContent = dt ? `📅 ${dt}` : '';
+      datetimeEl.style.display = dt ? '' : 'none';
+      downloadEl.href = photo.originalUrl;
+      if (photo.editable) {
+        editEl.href = `/photos/${photo.id}?pin=1`;
+        editEl.style.display = '';
+      } else {
+        editEl.style.display = 'none';
+      }
+      panel.classList.add('show');
+      panel.setAttribute('aria-hidden', 'false');
     }
-    panel.classList.add('show');
-    panel.setAttribute('aria-hidden', 'false');
+
+    function close() {
+      panel.classList.remove('show');
+      panel.setAttribute('aria-hidden', 'true');
+      currentPhoto = null;
+    }
+
+    panel.querySelector('.close')?.addEventListener('click', close, { signal });
+    hero.addEventListener('click', () => {
+      if (!currentPhoto) return;
+      window.location.href = `/photos/${currentPhoto.id}`;
+    }, { signal });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && panel.classList.contains('show')) close();
+    }, { signal });
+
+    window.addEventListener('preview:open', (e: any) => open(e.detail.photo), { signal });
+    window.addEventListener('preview:close', close, { signal });
   }
-
-  function close() {
-    panel.classList.remove('show');
-    panel.setAttribute('aria-hidden', 'true');
-    currentPhoto = null;
-  }
-
-  panel.querySelector('.close')!.addEventListener('click', close);
-  hero.addEventListener('click', () => {
-    if (!currentPhoto) return;
-    // Single source of truth — same detail page everywhere.
-    window.location.href = `/photos/${currentPhoto.id}`;
-  });
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && panel.classList.contains('show')) close();
-  });
-
-  window.addEventListener('preview:open', (e) => open(e.detail.photo));
-  window.addEventListener('preview:close', close);
+  setup();
+  document.addEventListener('astro:page-load', setup);
 </script>

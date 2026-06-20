@@ -590,6 +590,12 @@ function flag(code: string) {
   exifProvidedDate: exifHasDate,
   anythingEditable,
 }}>
+  // This define:vars re-runs on every ClientRouter visit, so window-level
+  // listeners accumulate unless we tear them down before the next swap.
+  const __pageAbort = new AbortController();
+  const __signal = __pageAbort.signal;
+  document.addEventListener('astro:before-swap', () => __pageAbort.abort(), { once: true, signal: __signal });
+
   // "Where did the user come from before entering this detail flow?"
   // history.back() is wrong: if they hit ← / → a few times, back() just
   // walks through previous photos instead of returning to the list page.
@@ -627,7 +633,7 @@ function flag(code: string) {
     if (e.key === 'ArrowLeft' && prevHref) window.location.href = prevHref;
     else if (e.key === 'ArrowRight' && nextHref) window.location.href = nextHref;
     else if (e.key === 'Escape') goParent();
-  });
+  }, { signal: __signal });
 
   // First-paint nudge: pulse the ← → buttons twice so the user notices
   // they can navigate. Drops the class on first interaction so it
@@ -644,8 +650,8 @@ function flag(code: string) {
       arrows.forEach((a) => a.removeEventListener('mouseenter', drop));
     };
     setTimeout(drop, 3200); // pulse animation runs 2 × 1.4s
-    window.addEventListener('keydown', drop, { once: true });
-    arrows.forEach((a) => a.addEventListener('mouseenter', drop, { once: true }));
+    window.addEventListener('keydown', drop, { once: true, signal: __signal });
+    arrows.forEach((a) => a.addEventListener('mouseenter', drop, { once: true, signal: __signal }));
   }
 
   document.getElementById('hero')?.addEventListener('click', () => {

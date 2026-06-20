@@ -472,6 +472,25 @@ const firstThumbs = countries.length
 </style>
 
 <script>
+  // Astro's ClientRouter swaps the body on each navigation. This <script>
+  // module body only executes ONCE per session. Without the setup()
+  // wrapper + astro:page-load re-run, every second visit to /timeline
+  // would render dead chrome (rail toggle inert, no justified grid,
+  // batch select non-functional).
+  let cleanupTimeline: (() => void) | null = null;
+
+  function setup() {
+    // Tear down listeners from a previous setup() — they're attached
+    // to the now-detached DOM nodes anyway, but window/document signals
+    // need explicit abort.
+    cleanupTimeline?.();
+    const ac = new AbortController();
+    const signal = ac.signal;
+    cleanupTimeline = () => ac.abort();
+
+    // Bail out if we're not actually on /timeline (event fires page-wide).
+    if (!document.querySelector('.timeline-main')) return;
+
   // ---- Country-rail collapse (persisted) ----
   // Default for first-time visitors is COLLAPSED — the SSR HTML ships with
   // `rail-collapsed` already on. If the user previously expanded it
@@ -495,7 +514,7 @@ const firstThumbs = countries.length
     if (e.key === '`' && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
       toggle?.click();
     }
-  });
+  }, { signal });
 
   // ---- Justified row layout ----
   const TARGET_ROW_HEIGHT = 220;
@@ -604,7 +623,7 @@ const firstThumbs = countries.length
   window.addEventListener('resize', () => {
     clearTimeout(resizeT);
     resizeT = setTimeout(setupGrids, 150);
-  });
+  }, { signal });
 
   // ---- Selection / batch operations ----
   const selected = new Set<string>();   // set of paths
@@ -729,5 +748,12 @@ const firstThumbs = countries.length
       });
     }, { root: feed, threshold: 0.05, rootMargin: '-15% 0px -75% 0px' });
     sections.forEach((s) => io.observe(s));
+    // Chain disconnect onto the existing AbortController so the next
+    // setup() teardown also drops the IO subscription.
+    signal.addEventListener('abort', () => io.disconnect(), { once: true });
   }
+  } // end setup()
+
+  setup();
+  document.addEventListener('astro:page-load', setup);
 </script>

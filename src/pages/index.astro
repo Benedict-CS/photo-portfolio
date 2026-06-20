@@ -131,6 +131,14 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" is:inline></script>
 
 <script define:vars={{ photos }}>
+  // This define:vars block re-runs on every ClientRouter visit to /,
+  // so any window/document listeners we add stack up unless we tear the
+  // previous batch down. The AbortController + astro:before-swap pattern
+  // cleans up all signal-bound listeners just before the next page swap.
+  const __pageAbort = new AbortController();
+  const __signal = __pageAbort.signal;
+  document.addEventListener('astro:before-swap', () => __pageAbort.abort(), { once: true, signal: __signal });
+
   // Compute the minimum zoom that still keeps the world strictly wider than
   // the viewport — guarantees you never see the same marker twice on screen.
   //   world width at zoom z = 256 * 2^z pixels
@@ -156,7 +164,7 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   window.addEventListener('resize', () => {
     const z = minZoomForViewport();
     if (map.getMinZoom() !== z) map.setMinZoom(z);
-  });
+  }, { signal: __signal });
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     maxZoom: 19,
