@@ -19,13 +19,13 @@ const outName = `photo-portfolio-${stamp}.zip`;
 const outPath = path.join(BACKUPS_DIR, outName);
 
 // Items to include — only stuff that's not regeneratable.
+// Thumbs live in dist/client/thumbs/ in built mode (production), but a
+// dev checkout has them in public/thumbs/ — back up whichever exists.
 const items = [
   '.astro/content.db',
   'metadata.json',
   '.env.example',
-  // Thumbs are heavy but regenerable from Nextcloud, comment out if you want
-  // smaller backups:
-  'public/thumbs',
+  fs.existsSync('dist/client/thumbs') ? 'dist/client/thumbs' : 'public/thumbs',
 ];
 
 const present = items.filter((p) => fs.existsSync(p));

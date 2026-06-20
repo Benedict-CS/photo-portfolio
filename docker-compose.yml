@@ -45,7 +45,9 @@ services:
       - ./.astro:/app/.astro
       # Generated thumbnails — regenerable, but cheap to keep so the
       # first request after a rebuild doesn't re-fetch from Nextcloud.
-      - ./public/thumbs:/app/public/thumbs
+      # In a built SSR app, Astro serves static assets from dist/client/
+      # so that's where thumbs must land at runtime.
+      - ./public/thumbs:/app/dist/client/thumbs
       # Backup zips land here.
       - ./backups:/app/backups
     healthcheck:

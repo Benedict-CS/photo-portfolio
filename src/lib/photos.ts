@@ -18,9 +18,14 @@ import sharp from 'sharp';
 import { createClient, type FileStat, type WebDAVClient } from 'webdav';
 import { db, Photo as PhotoTable, eq } from 'astro:db';
 
+// Anchor file-system writes off the process cwd, not `import.meta.url` —
+// after Astro bundles, `__dirname` lands somewhere deep in `dist/server/chunks`
+// and `../..` lands on `dist/`, NOT the project root. Using cwd matches both
+// systemd (`WorkingDirectory=/home/ben/photo-portfolio`) and Docker
+// (`WORKDIR /app`), and stays correct under `npm run dev` too.
+const PROJECT_ROOT = process.cwd();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const PROJECT_ROOT = path.resolve(__dirname, '../..');
 
 const env: Record<string, string | undefined> =
   (typeof import.meta !== 'undefined' && (import.meta as any).env) || process.env;
@@ -28,7 +33,17 @@ const NEXTCLOUD_URL = (env.NEXTCLOUD_URL || '').replace(/\/+$/, '');
 const SHARE_TOKEN = env.NEXTCLOUD_SHARE_TOKEN || '';
 const SHARE_PASSWORD = env.NEXTCLOUD_SHARE_PASSWORD || '';
 
-const THUMBS_DIR = path.join(PROJECT_ROOT, 'public', 'thumbs');
+// In dev (`npm run dev`) Astro serves `public/` directly. In a built SSR
+// deploy, `public/` is copied to `dist/client/` and the Node adapter
+// serves THAT — so runtime-generated thumbs must land in `dist/client/`
+// to actually be reachable at the `/thumbs/...` URL.
+const IS_PROD =
+  (env.NODE_ENV || process.env.NODE_ENV) === 'production' ||
+  // import.meta.env.PROD is true in built bundles
+  (typeof import.meta !== 'undefined' && (import.meta as any).env?.PROD === true);
+const THUMBS_DIR = IS_PROD
+  ? path.join(PROJECT_ROOT, 'dist', 'client', 'thumbs')
+  : path.join(PROJECT_ROOT, 'public', 'thumbs');
 const IMG_EXTS = new Set(['.jpg', '.jpeg']);
 
 export const THUMB_SPECS = {
