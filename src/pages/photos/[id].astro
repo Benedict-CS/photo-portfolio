@@ -69,7 +69,15 @@ function flag(code: string) {
     )}
 
     <div class="stage">
-      <img class="hero" src={photo.thumbs.l} data-original={photo.originalUrl} alt={photo.album || photo.file} id="hero" />
+      <img
+        class="hero"
+        src={photo.thumbs.l}
+        data-original={photo.originalUrl}
+        alt={photo.description || `${photo.country || 'Photo'}${prettyDate ? ` · ${prettyDate}` : ''}`}
+        id="hero"
+        decoding="async"
+        fetchpriority="high"
+      />
     </div>
 
     <div id="loc-modal" class="loc-modal" hidden>

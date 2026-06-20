@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { createHash } from 'node:crypto';
 import { fetchOriginalById } from '~/lib/photos';
 import { rateLimit, clientIp } from '~/lib/rate-limit';
 
@@ -34,6 +35,22 @@ export const GET: APIRoute = async ({ params, request }) => {
     const result = await fetchOriginalById(id);
     if (!result) return new Response('Not Found', { status: 404 });
     const { buffer, filename, contentType } = result;
+
+    // ETag = sha1 of the bytes, quoted per RFC 9110. Stable for a given
+    // file version, so a "force reload" can short-circuit to 304 instead
+    // of round-tripping the whole JPEG.
+    const etag = `"${createHash('sha1').update(buffer).digest('hex')}"`;
+    const ifNoneMatch = request.headers.get('if-none-match');
+    if (ifNoneMatch && ifNoneMatch === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        },
+      });
+    }
+
     return new Response(buffer, {
       status: 200,
       headers: {
@@ -43,6 +60,7 @@ export const GET: APIRoute = async ({ params, request }) => {
         'Content-Disposition': `inline; filename="${filename.replace(/"/g, '')}"`,
         // Originals are immutable for a given id — cache hard.
         'Cache-Control': 'public, max-age=31536000, immutable',
+        ETag: etag,
       },
     });
   } catch (err) {

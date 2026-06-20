@@ -40,6 +40,10 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
     <link rel="preload" as="image" href={preloadImage} fetchpriority="high" />
   )}
 
+  <!-- Warm up CDN connections in parallel with the HTML download. -->
+  <link rel="preconnect" href="https://unpkg.com" crossorigin />
+  <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
+
   <!-- Open Graph (LINE / FB / Slack / Discord) -->
   <meta property="og:title" content={title} />
   <meta property="og:description" content={description} />
