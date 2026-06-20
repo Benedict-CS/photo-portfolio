@@ -614,7 +614,15 @@ const firstThumbs = countries.length
   function setupGrids() {
     document.querySelectorAll<HTMLElement>('.justified-grid').forEach((g) => {
       const photos = JSON.parse(g.dataset.photos || '[]');
-      layoutGrid(g, photos);
+      // layoutGrid early-returns when clientWidth is 0 (CSS not applied
+      // yet — happens on ClientRouter swap when layoutGrid runs before
+      // the new flex column has its computed width). Defer one frame
+      // so the second attempt always sees a real width.
+      if (g.clientWidth === 0) {
+        requestAnimationFrame(() => layoutGrid(g, photos));
+      } else {
+        layoutGrid(g, photos);
+      }
     });
   }
 

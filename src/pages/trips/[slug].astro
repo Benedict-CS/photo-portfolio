@@ -195,6 +195,10 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
         scrollWheelZoom: false, // don't hijack scrolling on a content page
       });
       tripMapInstance = map;
+      // Belt-and-braces — recompute container size after CSS settles in
+      // the next frame. Same fix as the main /map view: ClientRouter
+      // re-execution can outrun stylesheet application.
+      requestAnimationFrame(() => map.invalidateSize());
       L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
         subdomains: 'abcd',
         attribution: '&copy; OpenStreetMap &copy; CARTO',
@@ -222,7 +226,9 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
       const bounds = L.latLngBounds(latLngs);
       map.fitBounds(bounds.pad(0.2));
     }
-    setupTripMap();
-    document.addEventListener('astro:page-load', setupTripMap);
+    // Defer to next frame so the new container has a layout box.
+    const deferredSetup = () => requestAnimationFrame(setupTripMap);
+    deferredSetup();
+    document.addEventListener('astro:page-load', deferredSetup);
   </script>
 )}
