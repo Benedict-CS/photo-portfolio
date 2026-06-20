@@ -1,4 +1,5 @@
 :root {
+  /* ---- Colour ---- */
   --bg: #fafafa;
   --panel: #fff;
   --border: #e5e5e5;
@@ -6,6 +7,45 @@
   --muted: #777;
   --accent: #0366d6;
   --accent-bg: #e6f0fb;
+
+  /* ---- Spacing scale (4 px base) ----
+     Use these instead of one-off pixel values so vertical rhythm stays
+     consistent across pages. Mental shorthand: 1=tight, 4=default,
+     6=section, 8=hero. */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+  --space-8: 64px;
+
+  /* ---- Type scale ---- */
+  --text-xs:  11px;
+  --text-sm:  12px;
+  --text-md:  13px;
+  --text-base:14px;
+  --text-lg:  15px;
+  --text-xl:  18px;
+  --text-2xl: 24px;
+  --text-3xl: 32px;
+
+  /* ---- Radii ---- */
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   10px;
+  --radius-pill: 999px;
+
+  /* ---- Shadows ---- */
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.16);
+  --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.6);
+
+  /* ---- Motion ---- */
+  --ease-out:  cubic-bezier(0.2, 0.9, 0.3, 1);
+  --duration-fast: 0.15s;
+  --duration-mid:  0.28s;
 }
 
 * { box-sizing: border-box; }
@@ -13,7 +53,16 @@ html, body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  font-family: -apple-system, "Segoe UI", "Noto Sans CJK TC", sans-serif;
+  /* Inter ships from Google Fonts in Layout.astro with display=swap.
+     System stack stays in front so first paint isn't blocked on the
+     network — Inter just slides in once it loads. */
+  font-family: "Inter", -apple-system, "Segoe UI", "Noto Sans CJK TC", sans-serif;
+  /* Open up Inter's calibrated features (cv11 = single-storey a, ss01 =
+     contextual alternates) and turn on contextual ligatures. Pure visual
+     polish — no layout impact. */
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   color: var(--text);
   background: var(--bg);
 }
@@ -79,7 +128,7 @@ a:hover { text-decoration: underline; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 18px;
+  padding: var(--space-2) var(--space-5);
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -88,18 +137,18 @@ a:hover { text-decoration: underline; }
 #topbar .brand {
   display: flex;
   align-items: baseline;
-  gap: 10px;
+  gap: var(--space-3);
   color: inherit;
 }
 #topbar .brand:hover { text-decoration: none; }
-#topbar .brand .logo { font-size: 18px; }
-#topbar .brand .title { font-weight: 700; font-size: 15px; }
-#topbar .brand .stats { font-size: 11px; color: var(--muted); }
-#topbar nav { display: flex; gap: 4px; }
+#topbar .brand .logo { font-size: var(--text-xl); }
+#topbar .brand .title { font-weight: 700; font-size: var(--text-lg); letter-spacing: -0.01em; }
+#topbar .brand .stats { font-size: var(--text-xs); color: var(--muted); }
+#topbar nav { display: flex; gap: var(--space-1); }
 #topbar nav a {
-  font-size: 13px;
-  padding: 5px 12px;
-  border-radius: 6px;
+  font-size: var(--text-md);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
   color: var(--muted);
 }
 #topbar nav a:hover { background: #f3f4f6; text-decoration: none; color: var(--text); }
@@ -108,6 +157,37 @@ a:hover { text-decoration: underline; }
 @media (max-width: 600px) {
   #topbar .brand .stats { display: none; }
 }
+
+/* ---- Empty-state pattern ----
+   Shared by /favorites and /timeline. Pages can override the icon /
+   wording but the rhythm + sizing live here so they stay aligned. */
+.empty-state {
+  padding: var(--space-8) var(--space-5);
+  text-align: center;
+  color: var(--muted);
+  max-width: 480px;
+  margin: 0 auto;
+}
+.empty-state .empty-icon {
+  font-size: 64px;
+  margin-bottom: var(--space-3);
+  opacity: 0.55;
+  line-height: 1;
+}
+.empty-state .empty-title {
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 var(--space-1);
+  letter-spacing: -0.01em;
+}
+.empty-state .empty-hint {
+  font-size: var(--text-base);
+  line-height: 1.55;
+  margin: 0;
+}
+.empty-state .empty-hint a { color: var(--accent); }
+
 /* ---- Main panel ---- */
 #main { position: relative; flex: 1; min-height: 0; }
 #map {

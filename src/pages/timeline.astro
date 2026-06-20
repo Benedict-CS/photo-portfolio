@@ -74,8 +74,12 @@ const firstThumbs = countries.length
 <Layout title="📸 Photo Portfolio · Timeline" preloadThumbs={firstThumbs}>
   <div class="app-shell">
     <TopBar photos={photos} active="timeline" />
-    <main class="timeline-main">
-      <button id="rail-toggle" type="button" aria-label="Toggle country rail" title="Toggle country rail (`)">
+    {/* Rail starts collapsed — feels less crowded for first visitors;
+        the toggle button on the left edge is always visible. Users can
+        expand it once they decide they want country navigation, and the
+        choice persists in localStorage. */}
+    <main class="timeline-main rail-collapsed">
+      <button id="rail-toggle" type="button" aria-label="Toggle country rail" title="Show countries (`)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
       <aside class="country-rail" aria-label="Country navigation">
@@ -470,11 +474,16 @@ const firstThumbs = countries.length
 
 <script>
   // ---- Country-rail collapse (persisted) ----
+  // Default for first-time visitors is COLLAPSED — the SSR HTML ships with
+  // `rail-collapsed` already on. If the user previously expanded it
+  // (localStorage = '0'), restore that. If they previously collapsed it
+  // (localStorage = '1'), already correct. New visitors with no entry get
+  // the collapsed default.
   const RAIL_COLLAPSE_KEY = 'timeline-rail-collapsed';
   const main = document.querySelector('.timeline-main') as HTMLElement;
   const toggle = document.getElementById('rail-toggle');
-  if (main && localStorage.getItem(RAIL_COLLAPSE_KEY) === '1') {
-    main.classList.add('rail-collapsed');
+  if (main && localStorage.getItem(RAIL_COLLAPSE_KEY) === '0') {
+    main.classList.remove('rail-collapsed');
   }
   toggle?.addEventListener('click', () => {
     if (!main) return;
