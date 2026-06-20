@@ -24,10 +24,10 @@ jobs:
           - https://gallery.ben.winlab.tw/timeline
           - https://gallery.ben.winlab.tw/favorites
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 
@@ -64,7 +64,7 @@ jobs:
 
       - name: Upload report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: lighthouse-${{ env.SLUG }}
           path: |

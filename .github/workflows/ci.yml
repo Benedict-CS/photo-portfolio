@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
@@ -34,6 +34,10 @@ jobs:
           # SITE_URL only affects sitemap/canonical baked in. CI builds with the
           # production URL so a smoke-test of the artifact reflects what users see.
           SITE_URL: https://gallery.ben.winlab.tw
+          # Astro DB local-mode refuses to build without a target DB file —
+          # give it a throwaway path. The actual app DB lives under
+          # `~/photo-portfolio/.astro/` in production and is bind-mounted in.
+          ASTRO_DATABASE_FILE: /tmp/ci-content.db
 
       - name: Smoke-test the artifact (boot + /health)
         run: |

@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { timingSafeEqual } from 'node:crypto';
 import { updatePhoto, deletePhoto, getPhotoByPath } from '~/lib/photos';
 import { rateLimit, clientIp } from '~/lib/rate-limit';
 
@@ -35,12 +36,20 @@ const ADMIN_PASSWORD = (
  * If `ADMIN_PASSWORD` is empty (dev), we never reject. In production set
  * ADMIN_PASSWORD as an env var on your host (fly.io / Railway / …).
  */
+// Constant-time compare so the auth endpoint can't be brute-forced via
+// response-time side channels. Different-length inputs short-circuit; same-
+// length inputs get a constant-time byte comparison.
+function safeEq(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  return timingSafeEqual(Buffer.from(a), Buffer.from(b));
+}
+
 function checkAuth(request: Request): boolean {
   if (!ADMIN_PASSWORD) return true;
   const auth = request.headers.get('authorization') || '';
   const bearer = auth.startsWith('Bearer ') ? auth.slice(7) : '';
   const header = request.headers.get('x-admin-password') || '';
-  return bearer === ADMIN_PASSWORD || header === ADMIN_PASSWORD;
+  return safeEq(bearer, ADMIN_PASSWORD) || safeEq(header, ADMIN_PASSWORD);
 }
 
 function unauthorized() {

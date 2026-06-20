@@ -241,6 +241,12 @@ const sectionId = (country: string) =>
   .country-section {
     margin-bottom: 64px;
     scroll-margin-top: 20px;
+    /* Skip rendering off-screen country sections until they enter the
+       viewport. With ~5 countries × multi-month thumbnails each, this
+       trims the initial render cost (LCP / TBT) considerably. The
+       contain-intrinsic-size estimate stops scrollbar jumps. */
+    content-visibility: auto;
+    contain-intrinsic-size: auto 800px;
   }
   .country-section:last-child { margin-bottom: 40px; }
 
@@ -473,6 +479,9 @@ const sectionId = (country: string) =>
       if (p.placeholder) cell.style.backgroundImage = `url("${p.placeholder}")`;
       const img = document.createElement('img');
       img.loading = 'lazy';
+      // decoding=async lets the browser decode off the main thread so a
+      // scroll-burst of newly-revealed thumbs doesn't stall paints.
+      img.decoding = 'async';
       // Progressive: load the tiny 200px (square crop) first — usually arrives
       // in one TCP packet — then upgrade to the 400px once it's in cache.
       img.src = p.thumb_s;

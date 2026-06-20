@@ -21,7 +21,7 @@ import { db, Photo as PhotoTable, eq } from 'astro:db';
 // Anchor file-system writes off the process cwd, not `import.meta.url` —
 // after Astro bundles, `__dirname` lands somewhere deep in `dist/server/chunks`
 // and `../..` lands on `dist/`, NOT the project root. Using cwd matches both
-// systemd (`WorkingDirectory=/home/ben/photo-portfolio`) and Docker
+// systemd (`WorkingDirectory=<app-dir>`) and Docker
 // (`WORKDIR /app`), and stays correct under `npm run dev` too.
 const PROJECT_ROOT = process.cwd();
 const __filename = fileURLToPath(import.meta.url);
@@ -109,6 +109,9 @@ function normalizeCountryName(raw: string, code?: string): string {
 
 // ---------- Reverse geocoding ----------
 
+// Bounded LRU so a long-running server doesn't grow this map forever as
+// the user explores new lat/lon buckets.
+const GEO_CACHE_MAX = 5_000;
 const geoBucketCache = new Map<string, { country: string; countryCode: string }>();
 let lastGeoRequestAt = 0;
 
@@ -123,6 +126,8 @@ async function rateLimitedNominatim(lat: number, lon: number) {
         'User-Agent': 'photo-portfolio/0.2',
         'Accept-Language': 'en',
       },
+      // Don't let a slow Nominatim hang the whole sync loop.
+      signal: AbortSignal.timeout(5_000),
     });
     if (!res.ok) return null;
     const data: any = await res.json();
@@ -138,9 +143,19 @@ async function rateLimitedNominatim(lat: number, lon: number) {
 async function getCountry(lat: number, lon: number) {
   const bucketKey = `${Math.round(lat * 2) / 2},${Math.round(lon * 2) / 2}`;
   const cached = geoBucketCache.get(bucketKey);
-  if (cached) return cached;
+  if (cached) {
+    // Bump recency by deleting-and-re-inserting (Map iteration is insertion order).
+    geoBucketCache.delete(bucketKey);
+    geoBucketCache.set(bucketKey, cached);
+    return cached;
+  }
   const result = (await rateLimitedNominatim(lat, lon)) ?? { country: 'Unknown', countryCode: '' };
   geoBucketCache.set(bucketKey, result);
+  // Evict the oldest if we've grown past the cap.
+  if (geoBucketCache.size > GEO_CACHE_MAX) {
+    const oldest = geoBucketCache.keys().next().value as string | undefined;
+    if (oldest) geoBucketCache.delete(oldest);
+  }
   return result;
 }
 

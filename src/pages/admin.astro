@@ -175,7 +175,9 @@ const totalNeedsAction = buckets[0].photos.length;
 
   .bucket-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    /* min(360px, 100%) prevents a single column from overflowing a viewport
+       narrower than 360px (e.g. iPhone SE in landscape, foldables folded). */
+    grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
     gap: 18px;
   }
 

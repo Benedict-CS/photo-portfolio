@@ -20,6 +20,9 @@
     flex-direction: column;
     gap: 8px;
     pointer-events: none;
+    /* Cap the centred stack so a long message can't push past either edge
+       on narrow viewports. The min-width on .toast remains the soft floor. */
+    max-width: calc(100vw - 24px);
   }
   .toast {
     pointer-events: auto;
@@ -33,7 +36,9 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    min-width: 200px;
+    min-width: min(200px, 100%);
+    max-width: 100%;
+    overflow-wrap: anywhere;
     justify-content: center;
     transform: translateY(-8px);
     opacity: 0;
