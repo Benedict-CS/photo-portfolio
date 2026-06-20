@@ -1,7 +1,25 @@
 import type { APIRoute } from 'astro';
 import { updatePhoto, deletePhoto, getPhotoByPath } from '~/lib/photos';
+import { rateLimit, clientIp } from '~/lib/rate-limit';
 
 export const prerender = false;
+
+// Per-IP rate limits. Strict on POST/DELETE (auth-gated) to slow brute force.
+const WRITE_MAX = 60;          // 60 writes / minute / ip
+const WRITE_WINDOW_MS = 60_000;
+
+function tooManyRequests(reset: number) {
+  return new Response(
+    JSON.stringify({ ok: false, error: 'too many requests' }),
+    {
+      status: 429,
+      headers: {
+        'Content-Type': 'application/json',
+        'Retry-After': Math.ceil(reset / 1000).toString(),
+      },
+    }
+  );
+}
 
 const ADMIN_PASSWORD = (
   (typeof import.meta !== 'undefined' && (import.meta as any).env?.ADMIN_PASSWORD) ||
@@ -42,12 +60,24 @@ export const GET: APIRoute = async ({ url }) => {
 };
 
 export const DELETE: APIRoute = async ({ request }) => {
+  const rl = rateLimit(`del:${clientIp(request)}`, WRITE_MAX, WRITE_WINDOW_MS);
+  if (!rl.ok) return tooManyRequests(rl.resetMs);
   if (!checkAuth(request)) return unauthorized();
   try {
     const body = await request.json().catch(() => ({}));
-    const { path: p } = body;
+    const { path: p, paths } = body;
+    // Batch delete: { paths: ["a", "b", ...] }
+    if (Array.isArray(paths)) {
+      let count = 0;
+      for (const target of paths) {
+        if (await deletePhoto(target)) count++;
+      }
+      return new Response(JSON.stringify({ ok: true, count }), {
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }
     if (!p) {
-      return new Response(JSON.stringify({ ok: false, error: 'path required' }), {
+      return new Response(JSON.stringify({ ok: false, error: 'path or paths required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -66,6 +96,8 @@ export const DELETE: APIRoute = async ({ request }) => {
 };
 
 export const POST: APIRoute = async ({ request }) => {
+  const rl = rateLimit(`post:${clientIp(request)}`, WRITE_MAX, WRITE_WINDOW_MS);
+  if (!rl.ok) return tooManyRequests(rl.resetMs);
   if (!checkAuth(request)) return unauthorized();
   try {
     const body = await request.json().catch(() => ({}));

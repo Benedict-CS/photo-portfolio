@@ -3,22 +3,60 @@ export const prerender = false;
 import Layout from '~/layouts/Layout.astro';
 import TopBar from '~/components/TopBar.astro';
 import { getPhotos } from '~/lib/photos';
+import { db, Photo } from 'astro:db';
+import fs from 'node:fs/promises';
+import path from 'node:path';
 
 const photos = await getPhotos();
+
+// Server-side stats for the top status cards.
+const located = photos.filter((p) => p.lat !== null && p.lon !== null).length;
+const favorites = photos.filter((p) => p.favorite).length;
+const manualCount = photos.filter((p) => p.manualLocation).length;
+
+let dbBytes = 0;
+try {
+  const stat = await fs.stat(path.resolve('.astro/content.db'));
+  dbBytes = stat.size;
+} catch {}
+
+let thumbBytes = 0;
+async function dirSize(p: string): Promise<number> {
+  try {
+    let total = 0;
+    for (const e of await fs.readdir(p, { withFileTypes: true })) {
+      const f = path.join(p, e.name);
+      if (e.isDirectory()) total += await dirSize(f);
+      else total += (await fs.stat(f)).size;
+    }
+    return total;
+  } catch { return 0; }
+}
+thumbBytes = await dirSize(path.resolve('public/thumbs'));
+
+const fmtBytes = (n: number) => {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+};
+
+const datetimes = photos.map((p) => p.datetime).filter(Boolean).sort();
+const oldest = datetimes[0]?.slice(0, 10) || '—';
+const newest = datetimes[datetimes.length - 1]?.slice(0, 10) || '—';
 
 // Buckets the admin needs to action.
 const buckets = [
   {
     key: 'unlocated',
-    label: '📍 未定位',
-    desc: '沒 GPS,點進去打 pin',
+    label: '📍 Unlocated',
+    desc: 'No GPS — click to pin manually',
     photos: photos.filter((p) => p.lat === null || p.lon === null),
     color: '#dc7878',
   },
   {
     key: 'manual-pin',
-    label: '✋ 手動標位置',
-    desc: '你手動 pin 的,確認沒標錯',
+    label: '✋ Manually pinned',
+    desc: 'Locations you set by hand — double-check',
     photos: photos.filter((p) => p.manualLocation),
     color: '#6ec27e',
   },
@@ -31,11 +69,21 @@ const totalNeedsAction = buckets[0].photos.length;
     <TopBar photos={photos} active="map" />
     <main class="admin-main">
       <header class="admin-header">
-        <h1>⚙️ Admin Dashboard</h1>
+        <h1>⚙️ Admin</h1>
         <p class="admin-sub">
-          總共 <b>{photos.length}</b> 張 · 還有 <b>{totalNeedsAction}</b> 張可以再加料
+          <b>{photos.length}</b> photos · <b>{totalNeedsAction}</b> waiting for action
         </p>
       </header>
+
+      <section class="stat-row">
+        <div class="stat"><span class="lbl">Photos</span><span class="num">{photos.length}</span></div>
+        <div class="stat"><span class="lbl">Located</span><span class="num">{located}</span></div>
+        <div class="stat"><span class="lbl">Favorites</span><span class="num">{favorites}</span></div>
+        <div class="stat"><span class="lbl">Manually pinned</span><span class="num">{manualCount}</span></div>
+        <div class="stat"><span class="lbl">DB size</span><span class="num">{fmtBytes(dbBytes)}</span></div>
+        <div class="stat"><span class="lbl">Thumbs size</span><span class="num">{fmtBytes(thumbBytes)}</span></div>
+        <div class="stat"><span class="lbl">Date range</span><span class="num small">{oldest}<br>{newest}</span></div>
+      </section>
 
       <div class="bucket-grid">
         {buckets.map((b) => (
@@ -48,20 +96,27 @@ const totalNeedsAction = buckets[0].photos.length;
               <div class="count">{b.photos.length}</div>
             </header>
             {b.photos.length === 0 ? (
-              <div class="empty">✓ 全部處理完了</div>
+              <div class="empty">✓ All clear</div>
             ) : (
-              <div class="thumbs">
-                {b.photos.slice(0, 12).map((p) => (
-                  <a href={`/photos/${p.id}`} class="thumb-cell" title={p.path}>
-                    <img loading="lazy" src={p.thumbs.s} alt="" />
-                  </a>
-                ))}
-                {b.photos.length > 12 && (
-                  <a href={`#${b.key}-all`} class="more" data-bucket={b.key}>
-                    +{b.photos.length - 12}
-                  </a>
-                )}
-              </div>
+              <>
+                <div class="bucket-actions edit-only">
+                  <button class="btn-link select-all" data-key={b.key}>Select all</button>
+                  <button class="btn-link clear-sel" data-key={b.key}>Clear</button>
+                  <button class="btn-link danger bulk-delete" data-key={b.key}>🗑 Delete selected</button>
+                </div>
+                <div class="thumbs">
+                  {b.photos.map((p) => (
+                    <div class="thumb-cell" data-path={p.path}>
+                      <a href={`/photos/${p.id}`} title={p.path} class="thumb-link">
+                        <img loading="lazy" src={p.thumbs.s} alt="" />
+                      </a>
+                      <label class="thumb-check edit-only">
+                        <input type="checkbox" data-bucket={b.key} />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+              </>
             )}
           </section>
         ))}
@@ -74,17 +129,49 @@ const totalNeedsAction = buckets[0].photos.length;
   .admin-main {
     flex: 1;
     overflow-y: auto;
-    padding: 32px 48px 80px;
+    padding: 28px 36px 80px;
     background: var(--bg);
   }
-  .admin-header { margin-bottom: 32px; }
+  .admin-header { margin-bottom: 22px; }
   .admin-header h1 {
-    font-size: 32px;
+    font-size: 28px;
     font-weight: 800;
-    margin: 0 0 6px;
+    margin: 0 0 4px;
     letter-spacing: -0.02em;
   }
-  .admin-sub { color: var(--muted); margin: 0; }
+  .admin-sub { color: var(--muted); margin: 0; font-size: 13px; }
+
+  .stat-row {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-bottom: 26px;
+  }
+  .stat-row .stat {
+    background: var(--panel);
+    border-radius: 8px;
+    padding: 12px 14px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .stat-row .lbl {
+    color: var(--muted);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .stat-row .num {
+    font-size: 22px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+  .stat-row .num.small {
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1.3;
+  }
 
   .bucket-grid {
     display: grid;
@@ -121,44 +208,145 @@ const totalNeedsAction = buckets[0].photos.length;
     padding: 16px 0;
     text-align: center;
   }
+  .bucket-actions {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    font-size: 12px;
+    flex-wrap: wrap;
+  }
+  .bucket-actions .btn-link {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 10px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .bucket-actions .btn-link:hover { background: #f3f4f6; }
+  .bucket-actions .btn-link.danger { color: #c93636; border-color: #f0c0c0; }
+  .bucket-actions .btn-link.danger:hover { background: #fdf0f0; }
+
   .bucket .thumbs {
     display: grid;
     grid-template-columns: repeat(6, 1fr);
     gap: 4px;
   }
   .bucket .thumb-cell {
+    position: relative;
     aspect-ratio: 1;
     overflow: hidden;
     border-radius: 3px;
     background: #ddd;
-    display: block;
   }
+  .bucket .thumb-link { display: block; height: 100%; }
   .bucket .thumb-cell img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
   }
-  .bucket .thumb-cell:hover { opacity: 0.85; }
-  .bucket .more {
-    aspect-ratio: 1;
-    background: #f3f4f6;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+  .bucket .thumb-cell:hover img { opacity: 0.85; }
+  .bucket .thumb-cell.selected {
+    outline: 3px solid var(--accent);
+    outline-offset: -3px;
+  }
+  .bucket .thumb-check {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    background: rgba(0,0,0,0.5);
     border-radius: 3px;
-    color: var(--muted);
-    font-weight: 600;
-    font-size: 13px;
+    padding: 2px;
+    display: flex;
+    cursor: pointer;
   }
-  .bucket .more:hover {
-    background: #e6e8eb;
-    color: var(--text);
-    text-decoration: none;
-  }
+  .bucket .thumb-check input { margin: 0; cursor: pointer; }
 
   @media (max-width: 600px) {
-    .admin-main { padding: 20px 16px 60px; }
+    .admin-main { padding: 18px 14px 60px; }
     .bucket-grid { grid-template-columns: 1fr; }
+    .bucket .thumbs { grid-template-columns: repeat(4, 1fr); }
   }
 </style>
+
+<script>
+  // Inline auth helper.
+  const TOKEN_KEY = 'photo-admin-token';
+  async function authedFetch(url, init = {}) {
+    async function go(token) {
+      const headers = new Headers(init.headers || {});
+      if (token) headers.set('Authorization', `Bearer ${token}`);
+      return fetch(url, { ...init, headers });
+    }
+    let res = await go(localStorage.getItem(TOKEN_KEY) || '');
+    if (res.status !== 401) return res;
+    const entered = await window.promptPassword?.('Admin password required');
+    if (!entered) return res;
+    localStorage.setItem(TOKEN_KEY, entered);
+    res = await go(entered);
+    if (res.status === 401) {
+      localStorage.removeItem(TOKEN_KEY);
+      throw new Error('wrong password');
+    }
+    return res;
+  }
+  function toast(type, message) {
+    window.dispatchEvent(new CustomEvent('toast:show', { detail: { type, message } }));
+  }
+
+  // Selection logic — checkboxes mark cells; class .selected styles them.
+  document.querySelectorAll('.thumb-check input').forEach((input) => {
+    input.addEventListener('change', () => {
+      const cell = input.closest('.thumb-cell');
+      cell?.classList.toggle('selected', input.checked);
+    });
+  });
+
+  // "Select all" / "Clear" per bucket
+  document.querySelectorAll('.select-all').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      document.querySelectorAll(`.bucket[data-key="${key}"] .thumb-check input`).forEach((cb) => {
+        cb.checked = true;
+        cb.closest('.thumb-cell')?.classList.add('selected');
+      });
+    });
+  });
+  document.querySelectorAll('.clear-sel').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const key = btn.dataset.key;
+      document.querySelectorAll(`.bucket[data-key="${key}"] .thumb-check input`).forEach((cb) => {
+        cb.checked = false;
+        cb.closest('.thumb-cell')?.classList.remove('selected');
+      });
+    });
+  });
+
+  // Bulk delete
+  document.querySelectorAll('.bulk-delete').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const key = btn.dataset.key;
+      const paths = [...document.querySelectorAll(
+        `.bucket[data-key="${key}"] .thumb-check input:checked`
+      )].map((cb) => cb.closest('.thumb-cell')?.dataset.path).filter(Boolean);
+      if (paths.length === 0) { toast('info', 'Nothing selected'); return; }
+      if (!confirm(`Permanently delete ${paths.length} photo(s)?\nFiles will be removed from Nextcloud too.`)) return;
+      try {
+        const res = await authedFetch('/api/metadata', {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ paths }),
+        });
+        const data = await res.json();
+        if (!data.ok) throw new Error(data.error || 'delete failed');
+        toast('success', `Deleted ${data.count}`);
+        setTimeout(() => window.location.reload(), 600);
+      } catch (err) {
+        toast('error', `Failed: ${err.message || err}`);
+      }
+    });
+  });
+</script>
