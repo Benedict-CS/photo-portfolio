@@ -51,12 +51,16 @@
 </style>
 
 <script>
-  const stack = document.getElementById('toast-stack')!;
+  // Resolve the stack at toast time instead of script load — ClientRouter
+  // swaps the DOM on each navigation, so caching the original element
+  // would mean toasts dispatched on later pages have nowhere to land.
   function showToast(type: string, message: string, ttl = 2400) {
+    const stack = document.getElementById('toast-stack');
+    if (!stack) return;
     const el = document.createElement('div');
     el.className = `toast ${type}`;
-    // Build via DOM APIs — never interpolate user-controlled `message` into
-    // an innerHTML string, or a malicious toast dispatch could XSS.
+    // Build via DOM APIs — never interpolate user-controlled `message`
+    // into an innerHTML string, or a malicious toast dispatch could XSS.
     const iconChar = type === 'success' ? '✓' : type === 'error' ? '⚠' : '·';
     const iconEl = document.createElement('span');
     iconEl.className = 'icon';
@@ -65,7 +69,6 @@
     textEl.textContent = message;
     el.append(iconEl, textEl);
     stack.appendChild(el);
-    // Trigger transition
     requestAnimationFrame(() => el.classList.add('show'));
     setTimeout(() => {
       el.classList.remove('show');

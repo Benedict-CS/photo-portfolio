@@ -74,10 +74,10 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
 
 <script>
   const TOKEN_KEY = 'photo-admin-token';
-  const btn = document.getElementById('auth-btn');
-  const label = btn?.querySelector('.auth-label');
 
-  function refresh() {
+  function refreshBtn() {
+    const btn = document.getElementById('auth-btn');
+    const label = btn?.querySelector('.auth-label');
     if (!btn || !label) return;
     const has = !!localStorage.getItem(TOKEN_KEY);
     btn.classList.toggle('logged-in', has);
@@ -85,16 +85,13 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
     document.body.classList.toggle('logged-in', has);
     document.body.classList.toggle('logged-out', !has);
   }
-  refresh();
-  window.addEventListener('storage', (e) => { if (e.key === TOKEN_KEY) refresh(); });
-  window.addEventListener('auth:changed', refresh);
 
-  btn?.addEventListener('click', async () => {
+  async function onAuthClick() {
     const has = !!localStorage.getItem(TOKEN_KEY);
     if (has) {
       if (confirm('Sign out? You will be asked for the password again next time you edit.')) {
         localStorage.removeItem(TOKEN_KEY);
-        refresh();
+        refreshBtn();
         window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'info', message: 'Signed out' } }));
       }
       return;
@@ -111,7 +108,20 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
       return;
     }
     localStorage.setItem(TOKEN_KEY, pw);
-    refresh();
+    refreshBtn();
     window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'success', message: 'Signed in' } }));
-  });
+  }
+
+  // Astro's ClientRouter swaps the body on each navigation, which means a
+  // listener bound to the old #auth-btn dies with the old DOM. Re-bind on
+  // every `astro:page-load` so the new button is always live.
+  function setup() {
+    refreshBtn();
+    const btn = document.getElementById('auth-btn');
+    btn?.addEventListener('click', onAuthClick);
+  }
+  setup();
+  document.addEventListener('astro:page-load', setup);
+  window.addEventListener('storage', (e) => { if (e.key === TOKEN_KEY) refreshBtn(); });
+  window.addEventListener('auth:changed', refreshBtn);
 </script>

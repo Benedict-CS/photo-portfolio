@@ -106,6 +106,11 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
   <script>
     // Sync body.logged-in class with the stored admin token, on EVERY page —
     // not just the ones with TopBar. Drives `.edit-only` visibility globally.
+    //
+    // With Astro's ClientRouter the <body> is swapped on every navigation,
+    // so we also re-sync after each `astro:page-load` event. Without that
+    // the body class set during the previous page's lifetime gets thrown
+    // away and `.edit-only` elements re-hide on the new page.
     const TOKEN_KEY = 'photo-admin-token';
     function syncAuthClass() {
       const has = !!localStorage.getItem(TOKEN_KEY);
@@ -113,6 +118,7 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
       document.body.classList.toggle('logged-out', !has);
     }
     syncAuthClass();
+    document.addEventListener('astro:page-load', syncAuthClass);
     window.addEventListener('storage', (e) => { if (e.key === TOKEN_KEY) syncAuthClass(); });
     window.addEventListener('auth:changed', syncAuthClass);
 
