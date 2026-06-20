@@ -11,7 +11,7 @@ interface Props {
 }
 const {
   title = 'Photo Portfolio',
-  description = '旅行照片作品集 · 用 GPS 串起來的旅程記錄',
+  description = 'A travel photo portfolio · pins on a world map',
   ogImage = '/icon-512.png',
   ogType = 'website',
 } = Astro.props;
@@ -21,7 +21,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site || `http://localhost:43
 const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}`;
 ---
 <!DOCTYPE html>
-<html lang="zh-Hant">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />

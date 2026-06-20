@@ -8,7 +8,7 @@ interface Props {
 const { photos, active } = Astro.props;
 
 const countries = new Set(
-  photos.map((p) => p.country).filter((c) => c && c !== '未定位')
+  photos.map((p) => p.country).filter((c) => c && c !== 'Unlocated')
 );
 const dates = photos.map((p) => p.datetime?.slice(0, 10) || '').filter(Boolean).sort();
 const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1].slice(0, 4)}` : '';
@@ -17,16 +17,15 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
   <a class="brand" href="/">
     <span class="logo">📸</span>
     <span class="title">Photo Portfolio</span>
-    <span class="stats">{photos.length} 張 · {countries.size} 國 · {span}</span>
+    <span class="stats">{photos.length} photos · {countries.size} countries · {span}</span>
   </a>
   <nav>
-    <a href="/" class={active === 'map' ? 'active' : ''}>🗺️ 地圖</a>
-    <a href="/timeline" class={active === 'timeline' ? 'active' : ''}>📅 Timeline</a>
-    <a href="/favorites" title="收藏">⭐</a>
-    <a href="/admin" class="admin-link edit-only" title="Admin Dashboard">⚙️</a>
-    <button id="auth-btn" type="button" class="auth-btn" title="管理員登入 / 登出">
-      <span class="auth-icon">🔓</span>
-      <span class="auth-label">登入</span>
+    <a href="/" class={active === 'map' ? 'active' : ''} title="Map">🗺️ <span class="nav-label">Map</span></a>
+    <a href="/timeline" class={active === 'timeline' ? 'active' : ''} title="Timeline">📅 <span class="nav-label">Timeline</span></a>
+    <a href="/favorites" title="Favorites">⭐</a>
+    <a href="/admin" class="admin-link edit-only" title="Admin">⚙️</a>
+    <button id="auth-btn" type="button" class="auth-btn" title="Sign in / out">
+      <span class="auth-label">Sign in</span>
     </button>
   </nav>
 </header>
@@ -47,70 +46,70 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
   }
   #topbar .auth-btn:hover { background: #f3f4f6; color: var(--text); }
   #topbar .auth-btn.logged-in { color: #1a8a3a; }
-  #topbar .auth-btn.logged-in .auth-icon::before { content: '🔒'; }
-  #topbar .auth-btn .auth-icon::before { content: '🔓'; }
-  #topbar .auth-btn .auth-icon { display: none; }
 
-  #topbar .random-btn,
   #topbar .admin-link {
     font-size: 14px;
     padding: 5px 10px;
     border-radius: 6px;
     color: var(--muted);
   }
-  #topbar .random-btn:hover,
   #topbar .admin-link:hover {
     background: #f3f4f6;
     text-decoration: none;
     transform: scale(1.1);
+  }
+
+  /* Mobile: compress nav and hide stats / nav labels */
+  @media (max-width: 720px) {
+    #topbar { padding: 6px 12px; height: 44px; }
+    #topbar .brand .stats { display: none; }
+    #topbar .brand .title { font-size: 13px; }
+    #topbar nav { gap: 2px; }
+    #topbar nav a, #topbar .auth-btn { padding: 4px 8px; font-size: 12px; }
+    #topbar nav a .nav-label { display: none; }
   }
 </style>
 
 <script>
   const TOKEN_KEY = 'photo-admin-token';
   const btn = document.getElementById('auth-btn');
-  const label = btn?.querySelector('.auth-label') as HTMLElement;
+  const label = btn?.querySelector('.auth-label');
 
   function refresh() {
-    if (!btn) return;
+    if (!btn || !label) return;
     const has = !!localStorage.getItem(TOKEN_KEY);
     btn.classList.toggle('logged-in', has);
-    label.textContent = has ? '🔒 已登入' : '🔓 登入';
-    // Toggle a body class so any element marked `.edit-only` is hidden
-    // when not logged in — keeps the UI honest with permissions.
+    label.textContent = has ? '🔒 Signed in' : '🔓 Sign in';
     document.body.classList.toggle('logged-in', has);
     document.body.classList.toggle('logged-out', !has);
   }
   refresh();
-  // Listen for cross-tab changes (logout in another tab → this tab updates).
   window.addEventListener('storage', (e) => { if (e.key === TOKEN_KEY) refresh(); });
-  // Custom event other components can dispatch after a successful save.
   window.addEventListener('auth:changed', refresh);
 
   btn?.addEventListener('click', async () => {
     const has = !!localStorage.getItem(TOKEN_KEY);
     if (has) {
-      if (confirm('要登出嗎?之後編輯會再問你密碼。')) {
+      if (confirm('Sign out? You will be asked for the password again next time you edit.')) {
         localStorage.removeItem(TOKEN_KEY);
         refresh();
-        window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'info', message: '已登出' } }));
+        window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'info', message: 'Signed out' } }));
       }
       return;
     }
-    const pw = await (window).promptPassword('請輸入管理員密碼');
+    const pw = await window.promptPassword('Enter admin password');
     if (!pw) return;
-    // Verify by hitting an auth-only route. Pass nothing → 400 (authed) or 401 (not).
     const r = await fetch('/api/metadata', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${pw}` },
       body: JSON.stringify({}),
     });
     if (r.status === 401) {
-      window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'error', message: '密碼錯誤' } }));
+      window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'error', message: 'Wrong password' } }));
       return;
     }
     localStorage.setItem(TOKEN_KEY, pw);
     refresh();
-    window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'success', message: '已登入' } }));
+    window.dispatchEvent(new CustomEvent('toast:show', { detail: { type: 'success', message: 'Signed in' } }));
   });
 </script>

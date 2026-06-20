@@ -12,7 +12,7 @@ type CountryGroup = { country: string; countryCode: string; count: number; month
 
 const byCountry = new Map<string, CountryGroup>();
 for (const p of photos) {
-  const ckey = p.country || '未知';
+  const ckey = p.country || 'Unknown';
   let g = byCountry.get(ckey);
   if (!g) {
     g = { country: ckey, countryCode: p.countryCode, count: 0, months: [] };
@@ -22,25 +22,26 @@ for (const p of photos) {
   const ym = (p.datetime || '').slice(0, 7) || 'unknown';
   let m = g.months.find((x) => x.ym === ym);
   if (!m) {
+    const MONTH_NAMES = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
     const monthLabel = ym === 'unknown'
-      ? '未知時間'
-      : `${ym.slice(0, 4)}年${parseInt(ym.slice(5, 7), 10)}月`;
+      ? 'Unknown date'
+      : `${MONTH_NAMES[parseInt(ym.slice(5, 7), 10) - 1]} ${ym.slice(0, 4)}`;
     m = { ym, monthLabel, photos: [] };
     g.months.push(m);
   }
   m.photos.push(p);
 }
 
-// Sort by photo count descending, but always pin 未定位 to the end so it
+// Sort by photo count descending, but always pin Unlocated to the end so it
 // doesn't break up the "real" countries in the rail.
 const countries = [...byCountry.values()].sort((a, b) => {
-  if (a.country === '未定位') return 1;
-  if (b.country === '未定位') return -1;
+  if (a.country === 'Unlocated') return 1;
+  if (b.country === 'Unlocated') return -1;
   return b.count - a.count;
 });
 for (const c of countries) {
   c.months.sort((a, b) => {
-    // Pin "unknown" (未知時間) to the bottom regardless of how the country is ordered.
+    // Pin "unknown" (Unknown date) to the bottom regardless of how the country is ordered.
     if (a.ym === 'unknown') return 1;
     if (b.ym === 'unknown') return -1;
     return b.ym.localeCompare(a.ym);
@@ -51,7 +52,7 @@ for (const c of countries) {
 }
 
 function flagEmoji(code: string) {
-  // 📍 signals "needs a location pinned" for the 未定位 bucket.
+  // 📍 signals "needs a location pinned" for the Unlocated bucket.
   if (!code || code.length !== 2) return '📍';
   return String.fromCodePoint(
     ...[...code.toLowerCase()].map((c) => 0x1f1e6 + (c.charCodeAt(0) - 97))
@@ -65,15 +66,15 @@ const sectionId = (country: string) =>
   <div class="app-shell">
     <TopBar photos={photos} active="timeline" />
     <main class="timeline-main">
-      <button id="rail-toggle" type="button" aria-label="切換國家欄" title="切換國家欄 (`)">
+      <button id="rail-toggle" type="button" aria-label="Toggle country rail" title="Toggle country rail (`)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
       </button>
-      <aside class="country-rail" aria-label="國家導覽">
+      <aside class="country-rail" aria-label="Country navigation">
         {countries.map((c) => (
           <a class="rail-item" href={`#${sectionId(c.country)}`} data-country={c.country} title={c.country}>
             <span class="rail-flag">{flagEmoji(c.countryCode)}</span>
             <span class="rail-name">{c.country}</span>
-            <span class="rail-code">{c.countryCode ? c.countryCode.toUpperCase() : '未'}</span>
+            <span class="rail-code">{c.countryCode ? c.countryCode.toUpperCase() : '?'}</span>
             <span class="rail-count">{c.count}</span>
           </a>
         ))}
@@ -81,11 +82,11 @@ const sectionId = (country: string) =>
 
       <div class="timeline-feed">
         <div class="select-hint edit-only">
-          <kbd>Ctrl/Cmd</kbd> + 點選 多選照片 · <kbd>Shift</kbd> + 點選 範圍選 · 選好後底部出現「⭐ 加入收藏」
+          <kbd>Ctrl/Cmd</kbd> + click to multi-select · <kbd>Shift</kbd> + click for range · then use the bottom bar
         </div>
         {countries.length === 0 ? (
           <div class="empty-state">
-            <p>沒有照片。請在 Nextcloud 分享資料夾裡上傳含 GPS 的 JPEG。</p>
+            <p>No photos yet. Upload JPEGs with GPS to your Nextcloud share.</p>
           </div>
         ) : (
           countries.map((c) => (
@@ -94,7 +95,7 @@ const sectionId = (country: string) =>
                 <div class="hero-flag">{flagEmoji(c.countryCode)}</div>
                 <div class="hero-meta">
                   <h2 class="hero-name">{c.country}</h2>
-                  <div class="hero-sub">{c.count} 張</div>
+                  <div class="hero-sub">{c.count} {c.count === 1 ? 'photo' : 'photos'}</div>
                 </div>
               </header>
               {c.months.map((m) => (
@@ -125,9 +126,9 @@ const sectionId = (country: string) =>
       </div>
     </main>
     <div id="batch-bar" class="edit-only">
-      <span class="count">已選 0 張</span>
-      <button id="batch-favorite" type="button">⭐ 加入收藏</button>
-      <button id="batch-clear" type="button">清除</button>
+      <span class="count">0 selected</span>
+      <button id="batch-favorite" type="button">⭐ Add to favorites</button>
+      <button id="batch-clear" type="button">Clear</button>
     </div>
   </div>
 </Layout>
@@ -567,7 +568,7 @@ const sectionId = (country: string) =>
   const batchCount = batchBar.querySelector('.count') as HTMLElement;
 
   function syncBatchBar() {
-    batchCount.textContent = `已選 ${selected.size} 張`;
+    batchCount.textContent = `${selected.size} selected`;
     batchBar.classList.toggle('show', selected.size > 0);
   }
 
@@ -636,13 +637,13 @@ const sectionId = (country: string) =>
     }
     let res = await go(localStorage.getItem(TOKEN_KEY) || '');
     if (res.status !== 401) return res;
-    const entered = await (window).promptPassword?.('需要管理員密碼才能編輯');
+    const entered = await (window).promptPassword?.('Admin password required');
     if (!entered) return res;
     localStorage.setItem(TOKEN_KEY, entered);
     res = await go(entered);
     if (res.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
-      throw new Error('密碼錯誤');
+      throw new Error('Wrong password');
     }
     return res;
   }
@@ -658,14 +659,14 @@ const sectionId = (country: string) =>
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'batch failed');
       window.dispatchEvent(new CustomEvent('toast:show', {
-        detail: { type: 'success', message: `⭐ ${data.count} 張已加入收藏` },
+        detail: { type: 'success', message: `⭐ ${data.count} added to favorites` },
       }));
       document.querySelectorAll('.justified-cell.selected').forEach((c) => c.classList.remove('selected'));
       selected.clear();
       syncBatchBar();
     } catch (err: any) {
       window.dispatchEvent(new CustomEvent('toast:show', {
-        detail: { type: 'error', message: `失敗:${err.message || err}` },
+        detail: { type: 'error', message: `Failed: ${err.message || err}` },
       }));
     }
   });

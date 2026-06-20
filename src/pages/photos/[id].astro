@@ -26,10 +26,10 @@ const anythingEditable = locationEditable || dateEditable;
 
 // Button label adapts to what's actually editable.
 const editLabel = locationEditable && dateEditable
-  ? (photo.lat ? '編輯位置/日期' : '設定位置/日期')
+  ? (photo.lat ? 'Edit location / date' : 'Set location / date')
   : locationEditable
-    ? (photo.lat ? '編輯位置' : '設定位置')
-    : '編輯日期';
+    ? (photo.lat ? 'Edit location' : 'Set location')
+    : 'Edit date';
 
 function flag(code: string) {
   if (!code || code.length !== 2) return '📍';
@@ -45,24 +45,24 @@ function flag(code: string) {
   ogType="article"
 >
   <div class="detail-page">
-    <a class="back map-link" href="/">← 回地圖</a>
+    <a class="back map-link" href="/">← Map</a>
     <button
       id="back-btn"
       class="back close-x"
       type="button"
-      title="返回上一頁 (Esc)"
+      title="Back (Esc)"
       onclick="if(window.history.length>1){window.history.back();}else{window.location.href='/';}"
     >
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="18" height="18" style="pointer-events:none"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
     </button>
 
     {prev && (
-      <a class="page-nav prev" href={`/photos/${prev.id}`} data-key="prev" title="上一張 (←)" rel="prev">
+      <a class="page-nav prev" href={`/photos/${prev.id}`} data-key="prev" title="Previous (←)" rel="prev">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polyline points="15 18 9 12 15 6"/></svg>
       </a>
     )}
     {next && (
-      <a class="page-nav next" href={`/photos/${next.id}`} data-key="next" title="下一張 (→)" rel="next">
+      <a class="page-nav next" href={`/photos/${next.id}`} data-key="next" title="Next (→)" rel="next">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="22" height="22"><polyline points="9 18 15 12 9 6"/></svg>
       </a>
     )}
@@ -74,21 +74,21 @@ function flag(code: string) {
     <div id="loc-modal" class="loc-modal" hidden>
       <div class="loc-modal-inner">
         <header>
-          <span>編輯位置 + 日期</span>
-          <button id="loc-close" type="button" aria-label="關閉">×</button>
+          <span>Edit location + date</span>
+          <button id="loc-close" type="button" aria-label="Close">×</button>
         </header>
         <div class="loc-date-row">
-          <label for="loc-date">📅 日期</label>
+          <label for="loc-date">📅 Date</label>
           <input type="date" id="loc-date" />
-          <button id="loc-date-clear" type="button" class="link-btn" title="清除手動日期(回到 EXIF)">清除</button>
+          <button id="loc-date-clear" type="button" class="link-btn" title="Clear manual date (revert to EXIF)">Clear</button>
         </div>
         <div id="loc-map"></div>
         <footer class="loc-footer">
-          <div class="loc-status" id="loc-status">尚未選位置</div>
+          <div class="loc-status" id="loc-status">No location chosen</div>
           <div class="loc-actions">
-            <button id="loc-remove" type="button" class="btn-danger" hidden>移除手動位置</button>
-            <button id="loc-cancel" type="button" class="btn-secondary">取消</button>
-            <button id="loc-save" type="button" class="btn-primary" disabled>儲存</button>
+            <button id="loc-remove" type="button" class="btn-danger" hidden>Remove manual location</button>
+            <button id="loc-cancel" type="button" class="btn-secondary">Cancel</button>
+            <button id="loc-save" type="button" class="btn-primary" disabled>Save</button>
           </div>
         </footer>
       </div>
@@ -99,7 +99,7 @@ function flag(code: string) {
         <span class="flag">{flag(photo.countryCode)}</span>
         <span>{photo.country || '—'}</span>
         <span class="dot">·</span>
-        <span>{prettyDate || '時間不詳'}</span>
+        <span>{prettyDate || 'Date unknown'}</span>
         {photo.camera && (
           <>
             <span class="dot">·</span>
@@ -112,7 +112,7 @@ function flag(code: string) {
           id="favorite-btn"
           class={`fav-btn ${photo.favorite ? 'on' : ''}`}
           type="button"
-          title="收藏這張(再按取消)"
+          title="Add to favorites (click again to remove)"
           data-fav={photo.favorite ? '1' : '0'}
         >
           {photo.favorite ? '⭐' : '☆'}
@@ -124,20 +124,20 @@ function flag(code: string) {
           </button>
         )}
         {photo.manualLocation && (
-          <button id="revert-location" class="loc-btn revert edit-only" type="button" title="回到未分類(移除手動位置)">
+          <button id="revert-location" class="loc-btn revert edit-only" type="button" title="Send back(Remove manual location)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-            <span>回到未分類</span>
+            <span>Send back</span>
           </button>
         )}
-        <button id="delete-photo" class="loc-btn danger edit-only" type="button" title="從 Nextcloud 永久刪除這張照片">
+        <button id="delete-photo" class="loc-btn danger edit-only" type="button" title="Permanently delete this photo from Nextcloud">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
-          <span>刪除</span>
+          <span>Delete</span>
         </button>
         <span class="position">{position.index} / {position.total}</span>
-        <button id="copy-link" class="download-link" type="button" title="複製連結">
+        <button id="copy-link" class="download-link" type="button" title="Copy link">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
         </button>
-        <a href={photo.originalUrl} target="_blank" class="download-link" title="下載原檔">
+        <a href={photo.originalUrl} target="_blank" class="download-link" title="Download original">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         </a>
       </div>
@@ -167,7 +167,7 @@ function flag(code: string) {
   }
   .detail-page .back:hover { background: rgba(0,0,0,0.8); text-decoration: none; }
 
-  /* Left: "回地圖" pill link */
+  /* Left: "Back to map" pill link */
   .detail-page .back.map-link {
     left: 18px;
     padding: 6px 12px;
@@ -431,10 +431,58 @@ function flag(code: string) {
   .btn-danger:hover { background: #fdf0f0; border-color: #d97070; }
 
   @media (max-width: 720px) {
-    .detail-page .stage { padding: 50px 16px 20px; }
+    .detail-page .stage { padding: 50px 14px 12px; }
     .detail-page .page-nav { width: 40px; height: 40px; }
-    .detail-page .page-nav.prev { left: 8px; }
-    .detail-page .page-nav.next { right: 8px; }
+    .detail-page .page-nav.prev { left: 6px; }
+    .detail-page .page-nav.next { right: 6px; }
+    .detail-page .back.map-link { top: 10px; left: 10px; padding: 6px 10px; font-size: 12px; }
+    .detail-page .back.close-x { top: 10px; right: 10px; width: 36px; height: 36px; }
+
+    /* Info bar: stack into two rows; right side becomes a horizontal scroll-strip. */
+    .detail-page .info-bar {
+      padding: 8px 12px 14px;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .detail-page .info-bar .left {
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .detail-page .info-bar .right {
+      gap: 6px;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 2px;
+    }
+    .detail-page .info-bar .right::-webkit-scrollbar { display: none; }
+    /* Bigger touch targets for the action chips. */
+    .detail-page .loc-btn,
+    .detail-page .fav-btn,
+    .detail-page .download-link {
+      min-height: 36px;
+      padding: 8px 10px;
+      flex-shrink: 0;
+    }
+    .detail-page .loc-btn span { white-space: nowrap; }
+    .detail-page .info-bar .position { font-size: 11px; }
+
+    /* Edit-location modal becomes a near-fullscreen sheet on mobile. */
+    .loc-modal-inner {
+      width: 100vw;
+      height: 100vh;
+      max-width: 100vw;
+      max-height: 100vh;
+      border-radius: 0;
+    }
+    .loc-footer { flex-wrap: wrap; gap: 8px; }
+    .loc-actions { width: 100%; justify-content: flex-end; }
+    .btn-primary, .btn-secondary, .btn-danger {
+      min-height: 40px;
+      font-size: 14px;
+    }
+    .loc-date-row { flex-wrap: wrap; }
   }
 </style>
 
@@ -506,15 +554,15 @@ function flag(code: string) {
     saveBtn.disabled = !isDirty();
     if (removeBtn) removeBtn.hidden = !manualLocation || !savedLatLng;
     let parts = [];
-    if (savedLatLng) parts.push(`位置:${savedLatLng.lat.toFixed(4)}, ${savedLatLng.lng.toFixed(4)}`);
-    else parts.push('位置:未設定');
-    if (savedDate) parts.push(`日期:${savedDate}`);
+    if (savedLatLng) parts.push(`Location: ${savedLatLng.lat.toFixed(4)}, ${savedLatLng.lng.toFixed(4)}`);
+    else parts.push('Location: none');
+    if (savedDate) parts.push(`Date: ${savedDate}`);
     if (isDirty()) {
       status.className = 'loc-status dirty';
       const changes = [];
-      if (isLocDirty()) changes.push(`位置→ ${pendingLatLng.lat.toFixed(4)}, ${pendingLatLng.lng.toFixed(4)}`);
-      if (isDateDirty()) changes.push(`日期→ ${pendingDate || '(清除)'}`);
-      status.textContent = `未儲存:${changes.join(' · ')}`;
+      if (isLocDirty()) changes.push(`Location → ${pendingLatLng.lat.toFixed(4)}, ${pendingLatLng.lng.toFixed(4)}`);
+      if (isDateDirty()) changes.push(`Date → ${pendingDate || '(cleared)'}`);
+      status.textContent = `Unsaved: ${changes.join(' · ')}`;
     } else {
       status.className = 'loc-status';
       status.textContent = parts.join(' · ');
@@ -560,7 +608,7 @@ function flag(code: string) {
   }
 
   function closeLocModal() {
-    if (isDirty() && !confirm('還有未儲存的變更,確定要離開嗎?')) return;
+    if (isDirty() && !confirm('You have unsaved changes. Discard and close?')) return;
     // Reset pending state to last-saved so reopening doesn't keep stale data
     pendingLatLng = savedLatLng ? { ...savedLatLng } : null;
     pendingDate = savedDate;
@@ -579,13 +627,13 @@ function flag(code: string) {
     }
     let res = await go(localStorage.getItem(TOKEN_KEY) || '');
     if (res.status !== 401) return res;
-    const entered = await (window).promptPassword?.('需要管理員密碼才能編輯');
+    const entered = await (window).promptPassword?.('Admin password required');
     if (!entered) return res;
     localStorage.setItem(TOKEN_KEY, entered);
     res = await go(entered);
     if (res.status === 401) {
       localStorage.removeItem(TOKEN_KEY);
-      throw new Error('密碼錯誤');
+      throw new Error('Wrong password');
     }
     return res;
   }
@@ -609,7 +657,7 @@ function flag(code: string) {
     saveBtn.disabled = true;
     saveBtn.classList.add('loading');
     status.className = 'loc-status saving';
-    status.textContent = '儲存中…';
+    status.textContent = 'Saving…';
     try {
       const body = {};
       if (isLocDirty() && pendingLatLng) {
@@ -632,25 +680,25 @@ function flag(code: string) {
       // Auto-close + toast so the photo is visible and feedback is clear.
       modal.hidden = true;
       const country = updated?.country || '';
-      toast('success', country ? `已存到 ${country}` : '已存');
+      toast('success', country ? `Saved to ${country}` : 'Saved');
     } catch (err) {
       status.className = 'loc-status error';
-      status.textContent = `⚠ 失敗:${err.message || err}`;
+      status.textContent = `⚠ Failed: ${err.message || err}`;
       saveBtn.disabled = false;
       saveBtn.classList.remove('loading');
-      toast('error', `儲存失敗:${err.message || err}`);
+      toast('error', `Save failed: ${err.message || err}`);
     }
   }
 
   async function doRemove() {
-    if (!confirm('確定要移除手動位置?照片會回到「未定位」分類。')) return;
+    if (!confirm('Remove the manual location? The photo will go back to Unlocated.')) return;
     try {
       await postMetadata({ lat: null, lon: null });
-      toast('success', '已移除手動位置');
+      toast('success', 'Manual location removed');
       // Brief delay so the toast is seen before navigation.
       setTimeout(() => { window.location.href = '/timeline'; }, 600);
     } catch (err) {
-      toast('error', `移除失敗:${err.message || err}`);
+      toast('error', `Remove failed: ${err.message || err}`);
     }
   }
 
@@ -680,13 +728,13 @@ function flag(code: string) {
     btn.textContent = next ? '⭐' : '☆';
     try {
       await postMetadata({ favorite: next });
-      toast('success', next ? '⭐ 加入收藏' : '已取消收藏');
+      toast('success', next ? '⭐ Added to favorites' : 'Removed from favorites');
     } catch (err) {
       // Rollback on error
       btn.dataset.fav = now ? '1' : '0';
       btn.classList.toggle('on', now);
       btn.textContent = now ? '⭐' : '☆';
-      toast('error', `失敗:${err.message || err}`);
+      toast('error', `Failed: ${err.message || err}`);
     }
   });
 
@@ -694,7 +742,7 @@ function flag(code: string) {
     const url = window.location.href.replace(/\?pin=1$/, '');
     try {
       await navigator.clipboard.writeText(url);
-      toast('success', '✓ 已複製連結');
+      toast('success', '✓ Link copied');
     } catch {
       // Fallback for non-https contexts.
       const ta = document.createElement('textarea');
@@ -703,12 +751,12 @@ function flag(code: string) {
       ta.select();
       document.execCommand('copy');
       document.body.removeChild(ta);
-      toast('success', '✓ 已複製連結');
+      toast('success', '✓ Link copied');
     }
   });
 
   document.getElementById('delete-photo')?.addEventListener('click', async () => {
-    if (!confirm('永久刪除這張照片?\n\n會從 Nextcloud 連同檔案一起刪除,且無法復原。')) return;
+    if (!confirm("Delete this photo permanently?\n\nIt will be removed from Nextcloud and can't be undone.")) return;
     try {
       const res = await authedFetch('/api/metadata', {
         method: 'DELETE',
@@ -717,10 +765,10 @@ function flag(code: string) {
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || 'delete failed');
-      toast('success', '已刪除');
+      toast('success', 'Deleted');
       setTimeout(() => { window.location.href = '/timeline'; }, 500);
     } catch (err) {
-      toast('error', `刪除失敗:${err.message || err}`);
+      toast('error', `Delete failed: ${err.message || err}`);
     }
   });
   modal?.addEventListener('click', (e) => { if (e.target === modal) closeLocModal(); });

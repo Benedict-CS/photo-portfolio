@@ -8,17 +8,17 @@ const photos = await getPhotos();
 const favorites = photos.filter((p) => p.favorite);
 favorites.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
 ---
-<Layout title="⭐ 收藏 · Photo Portfolio" description={`${favorites.length} 張收藏`}>
+<Layout title="⭐ Favorites · Photo Portfolio" description={`${favorites.length} favorites`}>
   <div class="app-shell">
     <TopBar photos={photos} active="map" />
     <main class="favs-main">
       <header class="favs-header">
-        <h1>⭐ 收藏</h1>
-        <p class="favs-sub">{favorites.length} 張</p>
+        <h1>⭐ Favorites</h1>
+        <p class="favs-sub">{favorites.length} {favorites.length === 1 ? 'photo' : 'photos'}</p>
       </header>
       {favorites.length === 0 ? (
         <div class="empty-state">
-          <p>還沒收藏任何照片。<br />進詳細頁點右下角 ☆ 加入收藏。</p>
+          <p>No favorites yet.<br />Open a photo and tap ☆ to add it here.</p>
         </div>
       ) : (
         <div class="favs-grid">

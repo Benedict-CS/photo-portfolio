@@ -7,23 +7,23 @@ import { getPhotos } from '~/lib/photos';
 
 const allPhotos = await getPhotos();
 // Map only displays photos with coordinates; no-GPS photos live in the
-// Timeline "📍 未定位" bucket until the user pins a location for them.
+// Timeline "📍 Unlocated" bucket until the user pins a location for them.
 const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
 ---
-<Layout title="📸 Photo Portfolio · 地圖">
+<Layout title="📸 Photo Portfolio · Map">
   <div class="app-shell">
     <TopBar photos={allPhotos} active="map" />
     <main id="main">
       <div id="map"></div>
       <div id="map-toolbar">
-        <button id="mode-markers" class="map-mode-btn active" title="散點模式">📍</button>
-        <button id="mode-routes" class="map-mode-btn" title="旅程路線(同國家連續 7 天內自動連線)">⚡</button>
-        <button id="ts-toggle" class="map-mode-btn" type="button" title="時間軸">🕐</button>
+        <button id="mode-markers" class="map-mode-btn active" title="Markers">📍</button>
+        <button id="mode-routes" class="map-mode-btn" title="Trip routes (same country + ≤7 day gap)">⚡</button>
+        <button id="ts-toggle" class="map-mode-btn" type="button" title="Time slider">🕐</button>
       </div>
       <div id="time-slider" hidden>
         <div class="ts-labels">
           <span id="ts-from">—</span>
-          <span id="ts-active">所有時間</span>
+          <span id="ts-active">All time</span>
           <span id="ts-to">—</span>
         </div>
         <input id="ts-range" type="range" min="0" max="100" value="100" step="1" />
@@ -228,7 +228,7 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     options: { position: 'topright' },
     onAdd() {
       const a = L.DomUtil.create('a', 'leaflet-bar reset-view-btn');
-      a.title = '回到全部照片';
+      a.title = 'Show all photos';
       a.href = '#';
       a.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><line x1="22" y1="12" x2="18" y2="12"/><line x1="6" y1="12" x2="2" y2="12"/><line x1="12" y1="6" x2="12" y2="2"/><line x1="12" y1="22" x2="12" y2="18"/></svg>`;
       L.DomEvent.on(a, 'click', (e) => {
@@ -278,7 +278,7 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   tsRange?.addEventListener('input', () => {
     timeFilter = parseInt(tsRange.value, 10);
     const cutoff = dateAtSliderValue(timeFilter);
-    if (tsActive) tsActive.textContent = timeFilter >= 100 ? '所有時間' : `≤ ${cutoff}`;
+    if (tsActive) tsActive.textContent = timeFilter >= 100 ? 'All time' : `≤ ${cutoff}`;
     rerender();
   });
 

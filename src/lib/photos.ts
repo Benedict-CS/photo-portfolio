@@ -70,21 +70,25 @@ export interface PhotoView {
 
 // ---------- Country normalisation ----------
 
-const COUNTRY_NAME_TW: Record<string, string> = {
-  jp: '日本', tw: '臺灣', cn: '中國', hk: '香港', mo: '澳門',
-  my: '馬來西亞', sg: '新加坡', th: '泰國', vn: '越南', ph: '菲律賓',
-  id: '印尼', kr: '韓國', kp: '北韓', in: '印度',
-  de: '德國', fr: '法國', it: '義大利', es: '西班牙', nl: '荷蘭',
-  ch: '瑞士', at: '奧地利', be: '比利時', cz: '捷克', sk: '斯洛伐克',
-  hu: '匈牙利', pl: '波蘭', pt: '葡萄牙', se: '瑞典', no: '挪威',
-  fi: '芬蘭', dk: '丹麥', ie: '愛爾蘭', gb: '英國', uk: '英國',
-  us: '美國', ca: '加拿大', mx: '墨西哥', au: '澳洲', nz: '紐西蘭',
-  br: '巴西', ar: '阿根廷', cl: '智利', ru: '俄羅斯', tr: '土耳其',
-  eg: '埃及', za: '南非', ae: '阿聯酋', sa: '沙烏地阿拉伯', il: '以色列',
+// Canonical English country names by ISO-3166 alpha-2 code. Nominatim
+// occasionally returns multi-language values like "Deutschland;Germany" or
+// the local-only form depending on the language headers — we always prefer
+// our own clean English name.
+const COUNTRY_NAME_EN: Record<string, string> = {
+  jp: 'Japan', tw: 'Taiwan', cn: 'China', hk: 'Hong Kong', mo: 'Macao',
+  my: 'Malaysia', sg: 'Singapore', th: 'Thailand', vn: 'Vietnam', ph: 'Philippines',
+  id: 'Indonesia', kr: 'South Korea', kp: 'North Korea', in: 'India',
+  de: 'Germany', fr: 'France', it: 'Italy', es: 'Spain', nl: 'Netherlands',
+  ch: 'Switzerland', at: 'Austria', be: 'Belgium', cz: 'Czechia', sk: 'Slovakia',
+  hu: 'Hungary', pl: 'Poland', pt: 'Portugal', se: 'Sweden', no: 'Norway',
+  fi: 'Finland', dk: 'Denmark', ie: 'Ireland', gb: 'United Kingdom', uk: 'United Kingdom',
+  us: 'United States', ca: 'Canada', mx: 'Mexico', au: 'Australia', nz: 'New Zealand',
+  br: 'Brazil', ar: 'Argentina', cl: 'Chile', ru: 'Russia', tr: 'Turkey',
+  eg: 'Egypt', za: 'South Africa', ae: 'United Arab Emirates', sa: 'Saudi Arabia', il: 'Israel',
 };
 
 function normalizeCountryName(raw: string, code?: string): string {
-  if (code && COUNTRY_NAME_TW[code.toLowerCase()]) return COUNTRY_NAME_TW[code.toLowerCase()];
+  if (code && COUNTRY_NAME_EN[code.toLowerCase()]) return COUNTRY_NAME_EN[code.toLowerCase()];
   return (raw || '').split(/[;/,]/)[0].trim();
 }
 
@@ -97,12 +101,12 @@ async function rateLimitedNominatim(lat: number, lon: number) {
   const delta = Date.now() - lastGeoRequestAt;
   if (delta < 1100) await new Promise((r) => setTimeout(r, 1100 - delta));
   lastGeoRequestAt = Date.now();
-  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=jsonv2&zoom=3&accept-language=zh-TW,zh,en`;
+  const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=jsonv2&zoom=3&accept-language=en`;
   try {
     const res = await fetch(url, {
       headers: {
         'User-Agent': 'photo-portfolio/0.2',
-        'Accept-Language': 'zh-TW,zh,en',
+        'Accept-Language': 'en',
       },
     });
     if (!res.ok) return null;
@@ -120,7 +124,7 @@ async function getCountry(lat: number, lon: number) {
   const bucketKey = `${Math.round(lat * 2) / 2},${Math.round(lon * 2) / 2}`;
   const cached = geoBucketCache.get(bucketKey);
   if (cached) return cached;
-  const result = (await rateLimitedNominatim(lat, lon)) ?? { country: '未知', countryCode: '' };
+  const result = (await rateLimitedNominatim(lat, lon)) ?? { country: 'Unknown', countryCode: '' };
   geoBucketCache.set(bucketKey, result);
   return result;
 }
@@ -322,7 +326,7 @@ async function syncFromNextcloud() {
         country = normalizeCountryName(geo.country, geo.countryCode);
         countryCode = geo.countryCode;
       } else {
-        country = '未定位';
+        country = 'Unlocated';
         countryCode = '';
       }
 
@@ -509,7 +513,7 @@ export async function updatePhoto(
       updates.country = normalizeCountryName(geo.country, geo.countryCode);
       updates.countryCode = geo.countryCode;
     } else {
-      updates.country = '未定位';
+      updates.country = 'Unlocated';
       updates.countryCode = '';
     }
   }
