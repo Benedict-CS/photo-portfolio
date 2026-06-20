@@ -3,7 +3,7 @@ import type { PhotoView as Photo } from '~/lib/photos';
 
 interface Props {
   photos: Photo[];
-  active: 'map' | 'timeline' | 'trips';
+  active: 'map' | 'timeline' | 'trips' | 'favorites' | 'upload' | 'admin';
 }
 const { photos, active } = Astro.props;
 
@@ -23,9 +23,9 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
     <a href="/" class={active === 'map' ? 'active' : ''} title="Map">🗺️ <span class="nav-label">Map</span></a>
     <a href="/timeline" class={active === 'timeline' ? 'active' : ''} title="Timeline">📅 <span class="nav-label">Timeline</span></a>
     <a href="/trips" class={active === 'trips' ? 'active' : ''} title="Trips">✈️ <span class="nav-label">Trips</span></a>
-    <a href="/favorites" title="Favorites">⭐</a>
-    <a href="/upload" class="admin-link edit-only" title="Upload photos">📤</a>
-    <a href="/admin" class="admin-link edit-only" title="Admin">⚙️</a>
+    <a href="/favorites" class={active === 'favorites' ? 'active' : ''} title="Favorites">⭐</a>
+    <a href="/upload" class={`admin-link edit-only${active === 'upload' ? ' active' : ''}`} title="Upload photos">📤</a>
+    <a href="/admin" class={`admin-link edit-only${active === 'admin' ? ' active' : ''}`} title="Admin">⚙️</a>
     <button id="auth-btn" type="button" class="auth-btn" title="Sign in / out">
       <span class="auth-label">Sign in</span>
     </button>

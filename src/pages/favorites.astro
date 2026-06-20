@@ -10,7 +10,7 @@ favorites.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
 ---
 <Layout title="⭐ Favorites · Photo Portfolio" description={`${favorites.length} favorites`}>
   <div class="app-shell">
-    <TopBar photos={photos} active="map" />
+    <TopBar photos={photos} active="favorites" />
     <main class="favs-main">
       <header class="favs-header">
         <h1>⭐ Favorites</h1>
