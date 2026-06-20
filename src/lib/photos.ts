@@ -170,11 +170,13 @@ function makeClient(): WebDAVClient {
   });
 }
 
+/**
+ * URL the browser hits to download the original. We deliberately proxy this
+ * through our own server (/api/photo/[id]/original) so we never leak the
+ * Nextcloud share token (which would grant access to the entire share).
+ */
 function originalUrl(relPath: string): string {
-  const dir = path.posix.dirname('/' + relPath);
-  const file = path.posix.basename(relPath);
-  const params = new URLSearchParams({ path: dir, files: file });
-  return `${NEXTCLOUD_URL}/s/${SHARE_TOKEN}/download?${params}`;
+  return `/api/photo/${encodeURIComponent(slugify(relPath))}/original`;
 }
 
 async function listFilesRecursive(client: WebDAVClient): Promise<FileStat[]> {
@@ -432,6 +434,24 @@ export async function getPhotoById(id: string): Promise<PhotoView | undefined> {
 export async function getPhotoByPath(p: string): Promise<PhotoView | undefined> {
   const rows = await db.select().from(PhotoTable).where(eq(PhotoTable.path, p));
   return rows[0] ? rowToView(rows[0]) : undefined;
+}
+
+/**
+ * Fetch the original photo bytes from Nextcloud for a given photo id.
+ * Returns the buffer + filename + mime so the API route can stream it
+ * back to the browser without ever exposing the share token client-side.
+ */
+export async function fetchOriginalById(
+  id: string,
+): Promise<{ buffer: Buffer; filename: string; contentType: string } | null> {
+  const rows = await db.select().from(PhotoTable);
+  const row = rows.find((r) => slugify(r.path) === id);
+  if (!row) return null;
+  const client = makeClient();
+  const data = (await client.getFileContents('/' + row.path)) as Buffer;
+  const ext = path.extname(row.file).toLowerCase();
+  const contentType = ext === '.png' ? 'image/png' : 'image/jpeg';
+  return { buffer: data, filename: row.file, contentType };
 }
 
 // ---------- Mutation API (used by /api/metadata) ----------

@@ -14,23 +14,38 @@ export const GET: APIRoute = async ({ site, url }) => {
   const staticUrls = [
     { loc: `${origin}/`, priority: 1.0, changefreq: 'weekly' },
     { loc: `${origin}/timeline`, priority: 0.8, changefreq: 'weekly' },
+    { loc: `${origin}/favorites`, priority: 0.5, changefreq: 'weekly' },
   ];
 
+  // Detail pages also advertise their hero thumb via the Google Images
+  // sitemap extension so the photo can show up in image search results.
   const photoUrls = photos.map((p) => ({
     loc: `${origin}/photos/${p.id}`,
+    image: `${origin}${p.thumbs.l}`,
+    caption: `${p.country || ''} ${p.datetime ? p.datetime.slice(0, 10) : ''}`.trim(),
     priority: 0.6,
     changefreq: 'monthly',
     lastmod: p.datetime ? p.datetime.slice(0, 10) : undefined,
   }));
 
-  const all = [...staticUrls, ...photoUrls];
+  const xmlEsc = (s: string) =>
+    s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${all.map((u) => `  <url>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">
+${staticUrls.map((u) => `  <url>
+    <loc>${u.loc}</loc>
+    <changefreq>${u.changefreq}</changefreq>
+    <priority>${u.priority.toFixed(1)}</priority>
+  </url>`).join('\n')}
+${photoUrls.map((u) => `  <url>
     <loc>${u.loc}</loc>
     <changefreq>${u.changefreq}</changefreq>
     <priority>${u.priority.toFixed(1)}</priority>${u.lastmod ? `\n    <lastmod>${u.lastmod}</lastmod>` : ''}
+    <image:image>
+      <image:loc>${xmlEsc(u.image)}</image:loc>${u.caption ? `\n      <image:caption>${xmlEsc(u.caption)}</image:caption>` : ''}
+    </image:image>
   </url>`).join('\n')}
 </urlset>
 `;

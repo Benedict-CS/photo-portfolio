@@ -71,7 +71,9 @@ function watcherPlugin() {
 }
 
 export default defineConfig({
-  site: 'https://example.com',
+  // Public site URL for canonical/og:url/sitemap. Override per-deploy by
+  // setting SITE_URL in .env (e.g. http://192.168.1.50:4321 for LAN).
+  site: process.env.SITE_URL || 'http://localhost:4321',
   output: 'server',          // SSR — API routes are alive in production too.
   adapter: node({ mode: 'standalone' }),
   integrations: [db()],

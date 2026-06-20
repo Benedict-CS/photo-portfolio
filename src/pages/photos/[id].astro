@@ -43,6 +43,7 @@ function flag(code: string) {
   description={photo.description || `${photo.country || ''} ${prettyDate || ''} · ${photo.album || ''}`.trim()}
   ogImage={photo.thumbs.l}
   ogType="article"
+  preloadImage={photo.thumbs.l}
 >
   <div class="detail-page">
     <a class="back map-link" href="/">← Map</a>

@@ -8,12 +8,15 @@ interface Props {
   description?: string;
   ogImage?: string;
   ogType?: 'website' | 'article';
+  /** Optional URL to <link rel="preload"> for LCP (typically the hero image). */
+  preloadImage?: string;
 }
 const {
   title = 'Photo Portfolio',
   description = 'A travel photo portfolio · pins on a world map',
   ogImage = '/icon-512.png',
   ogType = 'website',
+  preloadImage,
 } = Astro.props;
 
 const siteBase = Astro.site?.toString().replace(/\/$/, '') || '';
@@ -33,6 +36,9 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <link rel="apple-touch-icon" href="/icon-192.png" />
   <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
+  {preloadImage && (
+    <link rel="preload" as="image" href={preloadImage} fetchpriority="high" />
+  )}
 
   <!-- Open Graph (LINE / FB / Slack / Discord) -->
   <meta property="og:title" content={title} />
