@@ -77,6 +77,38 @@ EOF
   sudo systemctl enable --now "${BACKUP_NAME}.timer"
 fi
 
+# --- 3b. Backup AUTO-VERIFY — runs an hour after the backup ------------------
+# Tests the newest zip: integrity, SQLite header, Photo row count. Loud
+# failure surfaces a broken backup BEFORE you actually need to restore.
+say "Installing backup-verify service + timer"
+sudo apt-get install -y unzip sqlite3 >/dev/null 2>&1 || true
+sudo tee "/etc/systemd/system/photo-portfolio-verify.service" >/dev/null <<EOF
+[Unit]
+Description=Photo Portfolio backup verification (restores newest backup + checks DB)
+After=docker.service ${BACKUP_NAME}.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=${USER}
+WorkingDirectory=${APP_DIR}
+ExecStart=${DOCKER##sudo } compose exec -T app npm run verify-backup
+EOF
+sudo tee "/etc/systemd/system/photo-portfolio-verify.timer" >/dev/null <<EOF
+[Unit]
+Description=Run photo-portfolio backup verification daily (after backup)
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
+EOF
+sudo systemctl daemon-reload
+sudo systemctl enable --now photo-portfolio-verify.timer
+
 # --- 4. Build the image and start the container ------------------------------
 say "Building the Docker image (SITE_URL from .env will bake into the bundle)"
 $DOCKER compose build

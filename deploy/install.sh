@@ -117,10 +117,39 @@ RandomizedDelaySec=15min
 WantedBy=timers.target
 EOF
 
+# Backup verifier — runs an hour after the backup. unzip + sqlite3 are
+# required for the integrity / Photo-row-count steps.
+sudo apt-get install -y unzip sqlite3 >/dev/null 2>&1 || true
+sudo tee "/etc/systemd/system/photo-portfolio-verify.service" >/dev/null <<EOF
+[Unit]
+Description=Photo Portfolio backup verification
+After=${BACKUP_NAME}.service
+
+[Service]
+Type=oneshot
+User=${APP_USER}
+WorkingDirectory=${APP_DIR}
+ExecStart=${NPM_BIN} run verify-backup
+EOF
+
+sudo tee "/etc/systemd/system/photo-portfolio-verify.timer" >/dev/null <<EOF
+[Unit]
+Description=Run photo-portfolio backup verification daily (after backup)
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=10min
+
+[Install]
+WantedBy=timers.target
+EOF
+
 say "Reloading systemd + enabling units"
 sudo systemctl daemon-reload
 sudo systemctl enable --now "${SERVICE_NAME}.service"
 sudo systemctl enable --now "${BACKUP_NAME}.timer"
+sudo systemctl enable --now photo-portfolio-verify.timer
 
 # ---------- Summary ----------
 HOST_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"

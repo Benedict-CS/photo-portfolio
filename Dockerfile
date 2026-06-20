@@ -26,8 +26,10 @@ ENV NODE_ENV=production
 ENV HOST=0.0.0.0
 ENV PORT=4321
 
-# sharp's libvips runtime
-RUN apk add --no-cache vips tini
+# sharp's libvips runtime, plus the tools the backup + verify scripts
+# shell out to: zip/unzip for archive operations, sqlite for the
+# row-count step of npm run verify-backup. tini handles signals.
+RUN apk add --no-cache vips tini zip unzip sqlite
 
 # Drop privileges
 RUN addgroup -g 1001 app && adduser -D -u 1001 -G app app

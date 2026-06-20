@@ -1,0 +1,343 @@
+---
+export const prerender = false;
+import Layout from '~/layouts/Layout.astro';
+import TopBar from '~/components/TopBar.astro';
+import { getPhotos } from '~/lib/photos';
+
+const photos = await getPhotos();
+---
+<Layout title="📤 Upload · Photo Portfolio" description="Upload photos directly to the portfolio.">
+  <div class="app-shell">
+    <TopBar photos={photos} active="map" />
+    <main class="upload-main">
+      <header class="upload-header">
+        <h1>Upload photos</h1>
+        <p class="upload-sub">
+          Drag JPEGs here or pick from your camera roll. They go straight into the
+          Nextcloud share and appear in the gallery within seconds.
+        </p>
+      </header>
+
+      <div class="logged-out-only" style="text-align: center; padding: 60px 20px; color: var(--muted);">
+        Sign in (top-right) before uploading. Only the curator can add photos.
+      </div>
+
+      <div class="logged-in-only">
+        <label class="dropzone" id="dropzone" for="file-input">
+          <div class="dropzone-icon">📤</div>
+          <div class="dropzone-title">Drop JPEGs here</div>
+          <div class="dropzone-hint">or tap to choose · max 50 MB each · up to 20 at a time</div>
+          <input
+            id="file-input"
+            type="file"
+            accept="image/jpeg,image/jpg,.jpg,.jpeg"
+            multiple
+            capture="environment"
+            hidden
+          />
+        </label>
+
+        <ul id="upload-list" class="upload-list" aria-live="polite"></ul>
+
+        <div class="upload-actions" hidden id="upload-actions">
+          <button id="start-upload" class="btn-primary" type="button">Upload <span id="queue-count">0</span></button>
+          <button id="clear-queue" class="btn-secondary" type="button">Clear</button>
+        </div>
+      </div>
+    </main>
+  </div>
+</Layout>
+
+<style is:global>
+  .upload-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-6) var(--space-7) var(--space-8);
+    max-width: 760px;
+    width: 100%;
+    margin: 0 auto;
+  }
+  .upload-header { margin-bottom: var(--space-5); }
+  .upload-header h1 {
+    font-size: var(--text-3xl);
+    font-weight: 800;
+    margin: 0 0 var(--space-1);
+    letter-spacing: -0.02em;
+  }
+  .upload-sub { color: var(--muted); margin: 0; font-size: var(--text-md); line-height: 1.55; }
+
+  .dropzone {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-8) var(--space-5);
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--panel);
+    cursor: pointer;
+    transition: border-color 0.18s, background 0.18s, transform 0.12s;
+    text-align: center;
+  }
+  .dropzone:hover { border-color: var(--accent); background: var(--accent-bg); }
+  .dropzone.drag-over {
+    border-color: var(--accent);
+    background: var(--accent-bg);
+    transform: scale(1.01);
+  }
+  .dropzone-icon { font-size: 56px; margin-bottom: var(--space-3); opacity: 0.6; }
+  .dropzone-title {
+    font-size: var(--text-xl);
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: var(--space-1);
+  }
+  .dropzone-hint { font-size: var(--text-md); color: var(--muted); }
+
+  .upload-list {
+    list-style: none;
+    padding: 0;
+    margin: var(--space-5) 0 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+  .upload-list:empty { display: none; }
+  .upload-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--space-3);
+    padding: var(--space-3);
+    background: var(--panel);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    font-size: var(--text-md);
+  }
+  .upload-item .thumb {
+    width: 40px; height: 40px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    background: #eee;
+  }
+  .upload-item .name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .upload-item .size { color: var(--muted); font-size: var(--text-sm); }
+  .upload-item .status { font-size: var(--text-sm); color: var(--muted); justify-self: end; }
+  .upload-item.ok .status { color: #1a8a3a; }
+  .upload-item.err .status { color: #c93636; }
+  .upload-item.uploading .status { color: #b46d00; }
+
+  .upload-actions {
+    margin-top: var(--space-5);
+    display: flex;
+    gap: var(--space-3);
+    justify-content: flex-end;
+  }
+  .upload-actions .btn-primary,
+  .upload-actions .btn-secondary {
+    padding: 10px 22px;
+    font-size: var(--text-base);
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-family: inherit;
+    border: 1px solid transparent;
+    min-height: 44px;
+  }
+  .upload-actions .btn-primary {
+    background: var(--accent);
+    color: white;
+  }
+  .upload-actions .btn-primary:hover:not(:disabled) { background: #024fa1; }
+  .upload-actions .btn-primary:disabled { background: #d0d7e0; cursor: not-allowed; }
+  .upload-actions .btn-secondary {
+    background: white;
+    color: var(--text);
+    border-color: var(--border);
+  }
+  .upload-actions .btn-secondary:hover { background: #f3f4f6; }
+
+  @media (max-width: 720px) {
+    .upload-main { padding: var(--space-5) var(--space-4) var(--space-7); }
+    .upload-header h1 { font-size: var(--text-2xl); }
+    .dropzone { padding: var(--space-6) var(--space-4); }
+    .dropzone-icon { font-size: 44px; }
+  }
+</style>
+
+<script>
+  const TOKEN_KEY = 'photo-admin-token';
+  const dropzone = document.getElementById('dropzone') as HTMLLabelElement;
+  const input = document.getElementById('file-input') as HTMLInputElement;
+  const listEl = document.getElementById('upload-list') as HTMLUListElement;
+  const actions = document.getElementById('upload-actions') as HTMLDivElement;
+  const startBtn = document.getElementById('start-upload') as HTMLButtonElement;
+  const clearBtn = document.getElementById('clear-queue') as HTMLButtonElement;
+  const queueCountEl = document.getElementById('queue-count') as HTMLSpanElement;
+
+  type Queued = { file: File; el: HTMLLIElement; status: 'pending' | 'uploading' | 'ok' | 'err' };
+  const queue: Queued[] = [];
+
+  function fmtBytes(n: number) {
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+    return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function toast(type: string, message: string) {
+    window.dispatchEvent(new CustomEvent('toast:show', { detail: { type, message } }));
+  }
+
+  function refreshUI() {
+    actions.hidden = queue.length === 0;
+    queueCountEl.textContent = String(queue.length);
+    const anyPending = queue.some((q) => q.status === 'pending');
+    startBtn.disabled = !anyPending;
+  }
+
+  function addFiles(files: FileList | File[]) {
+    for (const file of Array.from(files)) {
+      if (!/\.(jpe?g)$/i.test(file.name)) {
+        toast('error', `${file.name}: only JPEG accepted`);
+        continue;
+      }
+      const li = document.createElement('li');
+      li.className = 'upload-item';
+      const thumb = document.createElement('img');
+      thumb.className = 'thumb';
+      thumb.alt = '';
+      const reader = new FileReader();
+      reader.onload = () => { thumb.src = reader.result as string; };
+      reader.readAsDataURL(file);
+
+      const meta = document.createElement('div');
+      meta.innerHTML = '';
+      const nameEl = document.createElement('div');
+      nameEl.className = 'name';
+      nameEl.textContent = file.name;
+      const sizeEl = document.createElement('div');
+      sizeEl.className = 'size';
+      sizeEl.textContent = fmtBytes(file.size);
+      meta.append(nameEl, sizeEl);
+
+      const status = document.createElement('span');
+      status.className = 'status';
+      status.textContent = 'Ready';
+
+      li.append(thumb, meta, status);
+      listEl.appendChild(li);
+      queue.push({ file, el: li, status: 'pending' });
+    }
+    refreshUI();
+  }
+
+  // Drag-drop wiring
+  ['dragenter', 'dragover'].forEach((ev) =>
+    dropzone.addEventListener(ev, (e) => {
+      e.preventDefault();
+      dropzone.classList.add('drag-over');
+    })
+  );
+  ['dragleave', 'drop'].forEach((ev) =>
+    dropzone.addEventListener(ev, (e) => {
+      e.preventDefault();
+      dropzone.classList.remove('drag-over');
+    })
+  );
+  dropzone.addEventListener('drop', (e: DragEvent) => {
+    if (e.dataTransfer?.files) addFiles(e.dataTransfer.files);
+  });
+
+  // File picker
+  input.addEventListener('change', () => {
+    if (input.files) addFiles(input.files);
+    input.value = '';
+  });
+
+  clearBtn.addEventListener('click', () => {
+    listEl.innerHTML = '';
+    queue.length = 0;
+    refreshUI();
+  });
+
+  async function uploadBatch(batch: Queued[]) {
+    const token = localStorage.getItem(TOKEN_KEY) || '';
+    if (!token) {
+      const entered = await (window as any).promptPassword?.('Admin password required to upload');
+      if (!entered) return;
+      localStorage.setItem(TOKEN_KEY, entered);
+    }
+    const auth = `Bearer ${localStorage.getItem(TOKEN_KEY)}`;
+
+    const form = new FormData();
+    for (const item of batch) {
+      form.append('files', item.file);
+      item.status = 'uploading';
+      item.el.classList.remove('ok', 'err');
+      item.el.classList.add('uploading');
+      const s = item.el.querySelector('.status') as HTMLElement;
+      s.textContent = 'Uploading…';
+    }
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        headers: { Authorization: auth },
+        body: form,
+      });
+      if (res.status === 401) {
+        localStorage.removeItem(TOKEN_KEY);
+        for (const item of batch) {
+          item.status = 'err';
+          item.el.classList.replace('uploading', 'err');
+          (item.el.querySelector('.status') as HTMLElement).textContent = 'Auth failed';
+        }
+        toast('error', 'Wrong password');
+        return;
+      }
+      const data = await res.json();
+      const resultByName: Record<string, { ok: boolean; error?: string }> = {};
+      for (const r of data.results || []) resultByName[r.name] = r;
+      for (const item of batch) {
+        const r = resultByName[item.file.name];
+        const s = item.el.querySelector('.status') as HTMLElement;
+        if (r?.ok) {
+          item.status = 'ok';
+          item.el.classList.replace('uploading', 'ok');
+          s.textContent = '✓ Uploaded';
+        } else {
+          item.status = 'err';
+          item.el.classList.replace('uploading', 'err');
+          s.textContent = r?.error || 'Failed';
+        }
+      }
+      const uploaded = data.uploaded ?? 0;
+      if (uploaded > 0) toast('success', `${uploaded} uploaded · syncing…`);
+    } catch (err: any) {
+      for (const item of batch) {
+        item.status = 'err';
+        item.el.classList.replace('uploading', 'err');
+        (item.el.querySelector('.status') as HTMLElement).textContent = err?.message || 'Network error';
+      }
+      toast('error', `Upload failed: ${err?.message || err}`);
+    } finally {
+      refreshUI();
+    }
+  }
+
+  startBtn.addEventListener('click', async () => {
+    const pending = queue.filter((q) => q.status === 'pending');
+    if (!pending.length) return;
+    startBtn.disabled = true;
+    // API caps at 20 files per request — chunk the queue accordingly.
+    const CHUNK = 20;
+    for (let i = 0; i < pending.length; i += CHUNK) {
+      await uploadBatch(pending.slice(i, i + CHUNK));
+    }
+    refreshUI();
+  });
+</script>
