@@ -10,7 +10,7 @@ const allPhotos = await getPhotos();
 // Timeline "📍 Unlocated" bucket until the user pins a location for them.
 const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
 ---
-<Layout title="📸 Photo Portfolio · Map">
+<Layout title="📸 Photo Portfolio · Map" needsLeaflet={true}>
   <div class="app-shell">
     <TopBar photos={allPhotos} active="map" />
     <main id="main">

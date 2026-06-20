@@ -10,6 +10,14 @@ interface Props {
   ogType?: 'website' | 'article';
   /** Optional URL to <link rel="preload"> for LCP (typically the hero image). */
   preloadImage?: string;
+  /** Extra image URLs to preload — e.g. the first row of timeline thumbs,
+   *  where the imgs themselves are created by client JS (so the browser
+   *  can't discover them from HTML alone). */
+  preloadThumbs?: string[];
+  /** Only the map page (and the detail page's edit modal) need Leaflet —
+   *  loading its CSS on every page wastes ~10 KB of render-blocking critical
+   *  CSS on /timeline, /favorites, /admin, /photos/[id] in the default view. */
+  needsLeaflet?: boolean;
 }
 const {
   title = 'Photo Portfolio',
@@ -17,6 +25,8 @@ const {
   ogImage = '/icon-512.png',
   ogType = 'website',
   preloadImage,
+  preloadThumbs = [],
+  needsLeaflet = false,
 } = Astro.props;
 
 const siteBase = Astro.site?.toString().replace(/\/$/, '') || '';
@@ -39,10 +49,17 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
   {preloadImage && (
     <link rel="preload" as="image" href={preloadImage} fetchpriority="high" />
   )}
+  {preloadThumbs.map((src) => (
+    <link rel="preload" as="image" href={src} />
+  ))}
 
-  <!-- Warm up CDN connections in parallel with the HTML download. -->
-  <link rel="preconnect" href="https://unpkg.com" crossorigin />
-  <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
+  {needsLeaflet && (
+    <>
+      {/* Warm up CDN connections in parallel with the HTML download. */}
+      <link rel="preconnect" href="https://unpkg.com" crossorigin />
+      <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
+    </>
+  )}
 
   <!-- Open Graph (LINE / FB / Slack / Discord) -->
   <meta property="og:title" content={title} />
@@ -57,9 +74,13 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
   <meta name="twitter:description" content={description} />
   <meta name="twitter:image" content={ogImageUrl} />
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+  {needsLeaflet && (
+    <>
+      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+    </>
+  )}
 </head>
 <body>
   <slot />

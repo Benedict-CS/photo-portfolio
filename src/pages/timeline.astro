@@ -61,8 +61,17 @@ function flagEmoji(code: string) {
 
 const sectionId = (country: string) =>
   'c-' + country.replace(/[^\w一-鿿]/g, '-');
+
+// Preload the first row of thumbnails. The timeline DOM is built by client
+// JS from data-photos JSON, so the browser can't discover image URLs from
+// the HTML alone — without these hints, LCP only starts AFTER the inline
+// script runs and creates the <img> elements. Six is enough to cover the
+// first justified row at any common viewport width.
+const firstThumbs = countries.length
+  ? countries[0].months[0]?.photos.slice(0, 6).map((p) => p.thumbs.s) ?? []
+  : [];
 ---
-<Layout title="📸 Photo Portfolio · Timeline">
+<Layout title="📸 Photo Portfolio · Timeline" preloadThumbs={firstThumbs}>
   <div class="app-shell">
     <TopBar photos={photos} active="timeline" />
     <main class="timeline-main">
@@ -241,10 +250,13 @@ const sectionId = (country: string) =>
   .country-section {
     margin-bottom: 64px;
     scroll-margin-top: 20px;
-    /* Skip rendering off-screen country sections until they enter the
-       viewport. With ~5 countries × multi-month thumbnails each, this
-       trims the initial render cost (LCP / TBT) considerably. The
-       contain-intrinsic-size estimate stops scrollbar jumps. */
+  }
+  /* Off-screen content-visibility skipping — only on the 2nd+ country
+     section. The very first section holds the LCP element, and putting it
+     behind content-visibility: auto *delays* LCP detection (Lighthouse
+     mis-measures the deferred render). Applying it only to siblings keeps
+     the LCP gain while still skipping below-fold render work. */
+  .country-section + .country-section {
     content-visibility: auto;
     contain-intrinsic-size: auto 800px;
   }
