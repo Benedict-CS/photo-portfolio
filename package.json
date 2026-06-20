@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "build": "astro build",
+    "build": "node scripts/preserve-db.mjs save && astro build && node scripts/preserve-db.mjs restore",
     "preview": "astro preview",
     "sync": "astro db execute scripts/sync.mjs",
     "predeploy": "npm run sync && npm run build",

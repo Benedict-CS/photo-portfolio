@@ -5,6 +5,7 @@ dist/
 .env
 *.log
 backups/
+.preserved-db.sqlite
 # Thumbnails are derived from the source photos + photos-cache.json. Keeping
 # them in git makes Cloudflare Pages cold builds fast (no re-download from
 # Nextcloud). Toggle this if/when the repo gets too big.
