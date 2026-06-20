@@ -25,6 +25,13 @@ services:
     image: photo-portfolio:latest
     container_name: photo-portfolio
     restart: unless-stopped
+    # Run as the host user that owns the bind-mounted .astro/ + public/thumbs
+    # directories so SQLite can actually WRITE the DB. The image bakes an
+    # `app` user (UID 1001) for security, but the host bind-mount belongs
+    # to the human user (usually UID 1000 on Ubuntu).
+    # Override via PUID/PGID in .env if your shell user is something other
+    # than 1000:1000:   echo "PUID=$(id -u)" >> .env && echo "PGID=$(id -g)" >> .env
+    user: "${PUID:-1000}:${PGID:-1000}"
     ports:
       - "4321:4321"
     env_file:
