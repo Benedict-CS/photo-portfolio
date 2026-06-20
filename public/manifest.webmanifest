@@ -3,11 +3,12 @@
   "short_name": "Photos",
   "description": "Travel photo portfolio across countries — map + timeline.",
   "start_url": "/",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#fafafa",
   "theme_color": "#0a0a0a",
   "orientation": "any",
-  "lang": "zh-Hant",
+  "lang": "en",
   "icons": [
     {
       "src": "/icon-192.png",

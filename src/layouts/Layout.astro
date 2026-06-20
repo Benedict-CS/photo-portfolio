@@ -77,6 +77,15 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
     syncAuthClass();
     window.addEventListener('storage', (e) => { if (e.key === TOKEN_KEY) syncAuthClass(); });
     window.addEventListener('auth:changed', syncAuthClass);
+
+    // Register the service worker on supported browsers. Scope: '/' so it
+    // covers every route. Failures are silent — SW is purely additive,
+    // the site works fine without it (we don't ship an "install" prompt).
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' }).catch(() => {});
+      });
+    }
   </script>
 </body>
 </html>

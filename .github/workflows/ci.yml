@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Newer push on the same branch cancels the in-flight CI to save runner minutes.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci --no-audit --no-fund
+
+      - name: Build (preserve-db wrapper + astro build)
+        run: npm run build
+        env:
+          # SITE_URL only affects sitemap/canonical baked in. CI builds with the
+          # production URL so a smoke-test of the artifact reflects what users see.
+          SITE_URL: https://gallery.ben.winlab.tw
+
+      - name: Smoke-test the artifact (boot + /health)
+        run: |
+          # Provide the minimum env the app needs to start. Nextcloud creds
+          # are intentionally empty — startup must still succeed, the first
+          # sync will fail gracefully which is what we want to verify.
+          NODE_ENV=production HOST=127.0.0.1 PORT=4321 \
+            node dist/server/entry.mjs &
+          SERVER_PID=$!
+          # Wait up to 30s for /health to respond 200.
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:4321/health >/dev/null; then
+              echo "✓ /health responded"
+              kill $SERVER_PID
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "✗ Server didn't respond on /health within 30s"
+          kill $SERVER_PID || true
+          exit 1

@@ -24,9 +24,14 @@ const isImmutablePath = (pathname: string): boolean => {
 
 export const onRequest = defineMiddleware(async (context, next) => {
   const response = await next();
-  if (isImmutablePath(context.url.pathname)) {
+  const pathname = context.url.pathname;
+  if (isImmutablePath(pathname)) {
     // Use set() (not append) so we win over whatever the static handler set.
     response.headers.set('Cache-Control', IMMUTABLE);
+  } else if (pathname === '/sw.js') {
+    // Service worker MUST short-cache, otherwise browsers won't pick up
+    // new versions until people clear cache — defeats the point.
+    response.headers.set('Cache-Control', 'public, max-age=0, must-revalidate');
   }
   return response;
 });

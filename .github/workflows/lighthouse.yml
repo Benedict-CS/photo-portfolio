@@ -1,0 +1,73 @@
+name: Lighthouse
+
+# Audits the live site, not a CI-built copy. Two triggers:
+#   - workflow_dispatch (you click Run from the Actions tab whenever curious)
+#   - weekly on Monday 03:00 UTC so regressions surface without you having to remember
+#
+# Reports get uploaded as workflow artifacts (HTML + JSON) — click into the run,
+# scroll to "Artifacts" at the bottom, download lighthouse-report.zip.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 3 * * 1'
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        url:
+          - https://gallery.ben.winlab.tw/
+          - https://gallery.ben.winlab.tw/timeline
+          - https://gallery.ben.winlab.tw/favorites
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run Lighthouse
+        run: |
+          npm install -g lighthouse@12 chrome-launcher
+          # Slug the URL for the report filename.
+          SLUG=$(echo "${{ matrix.url }}" | sed 's|https\?://||; s|/$||; s|[/.]|_|g')
+          echo "SLUG=$SLUG" >> $GITHUB_ENV
+          lighthouse "${{ matrix.url }}" \
+            --output html --output json \
+            --output-path "./report-$SLUG" \
+            --chrome-flags="--headless --no-sandbox" \
+            --preset=desktop \
+            --quiet
+
+      - name: Show scores in summary
+        if: always()
+        run: |
+          if [ -f "./report-${{ env.SLUG }}.report.json" ]; then
+            node -e "
+              const r = require('./report-${{ env.SLUG }}.report.json');
+              const c = r.categories;
+              const fmt = (s) => (s == null ? 'n/a' : Math.round(s * 100));
+              const line = '| ${{ matrix.url }} | ' +
+                fmt(c.performance?.score) + ' | ' +
+                fmt(c.accessibility?.score) + ' | ' +
+                fmt(c['best-practices']?.score) + ' | ' +
+                fmt(c.seo?.score) + ' |';
+              require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+                '| URL | Perf | A11y | BP | SEO |\n|---|---|---|---|---|\n' + line + '\n\n');
+            "
+          fi
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-${{ env.SLUG }}
+          path: |
+            report-*.report.html
+            report-*.report.json
+          retention-days: 30
