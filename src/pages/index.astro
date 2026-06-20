@@ -131,37 +131,37 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
 <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js" is:inline></script>
 
 <script define:vars={{ photos }}>
-  // This define:vars block re-runs on every ClientRouter visit to /,
-  // so any window/document listeners we add stack up unless we tear the
-  // previous batch down. The AbortController + astro:before-swap pattern
-  // cleans up all signal-bound listeners just before the next page swap.
-  const __pageAbort = new AbortController();
-  const __signal = __pageAbort.signal;
-  document.addEventListener('astro:before-swap', () => {
-    __pageAbort.abort();
-    // Tear down the previous Leaflet instance — its DOM is about to
-    // disappear with the body swap. Holding a stale reference would
-    // confuse Leaflet on the next mount.
-    if (window.__leafletMap) {
-      try { window.__leafletMap.remove(); } catch {}
-      window.__leafletMap = null;
-    }
-  }, { once: true, signal: __signal });
+  // After three failed attempts at fixing this, here's the design that
+  // actually survives ClientRouter:
+  //
+  // 1. A SINGLE persistent astro:page-load listener (gated by a window
+  //    flag) that ALWAYS runs on every navigation. It doesn't depend on
+  //    define:vars re-executing — even if Astro chose not to re-run this
+  //    block, the listener fires and re-mounts the map.
+  //
+  // 2. The init function is published on `window.__currentMapInit`. Every
+  //    fresh define:vars execution overwrites it with a NEW closure that
+  //    captures the latest `photos` array. The listener always calls the
+  //    most recent version.
+  //
+  // 3. The old Leaflet instance is disposed at the top of init (not on
+  //    before-swap) so the operation is atomic regardless of which event
+  //    triggered it.
 
-  // Compute the minimum zoom that still keeps the world strictly wider than
-  // the viewport — guarantees you never see the same marker twice on screen.
-  //   world width at zoom z = 256 * 2^z pixels
-  //   need 256 * 2^z > viewport width
   function minZoomForViewport() {
     return Math.max(2, Math.ceil(Math.log2(window.innerWidth / 256)));
   }
 
-  // Wrap the entire Leaflet setup in a function so we can defer it until
-  // the swapped-in DOM has been laid out. Without the deferral, when you
-  // navigate /timeline → /, define:vars re-executes BEFORE the new #map
-  // div has its computed dimensions — Leaflet then mounts into a 0×0
-  // container and the user sees a blank pane until they reload the page.
   function initLeafletMap() {
+    const mapDiv = document.getElementById('map');
+    if (!mapDiv) return; // Not on / — listener fires page-wide.
+
+    // Dispose any prior Leaflet instance before we mount on the (new) div.
+    if (window.__leafletMap) {
+      try { window.__leafletMap.remove(); } catch {}
+      window.__leafletMap = null;
+    }
+
   const L = window.L;
   const map = L.map('map', {
     zoomControl: true,
@@ -417,7 +417,7 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     }
   }
 
-    // Park the instance on window so a future before-swap can dispose it.
+    // Park the instance on window so the next visit's init can dispose it.
     window.__leafletMap = map;
 
     // Belt-and-braces: tell Leaflet to recompute its container size in
@@ -425,7 +425,26 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     requestAnimationFrame(() => map.invalidateSize());
   } // end initLeafletMap()
 
-  // Defer until the next animation frame so #map has a layout box. On a
-  // fresh page load both initialization paths converge to the same call.
+  // Publish the freshest closure (which captures THIS page's photos array)
+  // so the persistent listener below always calls the latest version.
+  window.__currentMapInit = initLeafletMap;
+
+  // Bind the global astro:page-load listener exactly ONCE per session.
+  // It survives across navigations because it isn't bound through any
+  // AbortController. On every nav that ends on /, it fires and calls
+  // whatever window.__currentMapInit currently points at.
+  if (!window.__mapListenerBound) {
+    window.__mapListenerBound = true;
+    document.addEventListener('astro:page-load', () => {
+      // RAF defers the mount until the swapped-in DOM has a layout box.
+      if (typeof window.__currentMapInit === 'function') {
+        requestAnimationFrame(window.__currentMapInit);
+      }
+    });
+  }
+
+  // Initial-load path: astro:page-load might fire BEFORE this define:vars
+  // runs (race on first page load), so trigger one synchronous attempt.
+  // initLeafletMap is idempotent (disposes any prior instance first).
   requestAnimationFrame(initLeafletMap);
 </script>
