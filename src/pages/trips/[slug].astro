@@ -1,0 +1,213 @@
+---
+export const prerender = false;
+import Layout from '~/layouts/Layout.astro';
+import TopBar from '~/components/TopBar.astro';
+import { getPhotos, getTripBySlug } from '~/lib/photos';
+
+const { slug } = Astro.params;
+if (!slug) return new Response('Not Found', { status: 404 });
+const trip = await getTripBySlug(slug);
+if (!trip) return new Response('Not Found', { status: 404 });
+
+const photos = await getPhotos();
+
+function flag(code: string) {
+  if (!code || code.length !== 2) return '📍';
+  return String.fromCodePoint(
+    ...[...code.toLowerCase()].map((c) => 0x1f1e6 + (c.charCodeAt(0) - 97)),
+  );
+}
+
+const prettyDates =
+  trip.start === trip.end ? trip.start : `${trip.start} – ${trip.end}`;
+
+// Only photos with coordinates feature on the mini-map.
+const tripGeoPhotos = trip.photos.filter(
+  (p) => p.lat !== null && p.lon !== null,
+);
+
+// Group photos by day for the gallery section.
+const byDay = new Map<string, typeof trip.photos>();
+for (const p of trip.photos) {
+  const day = p.datetime.slice(0, 10);
+  if (!byDay.has(day)) byDay.set(day, []);
+  byDay.get(day)!.push(p);
+}
+const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+---
+<Layout
+  title={`${trip.country} · ${prettyDates} · Photo Portfolio`}
+  description={`${trip.photos.length} photos from ${trip.country}, ${prettyDates}`}
+  ogImage={trip.photos[0].thumbs.l}
+  needsLeaflet={true}
+>
+  <div class="app-shell">
+    <TopBar photos={photos} active="trips" />
+    <main class="trip-main">
+      <header class="trip-header">
+        <a class="trip-crumb" href="/trips">← All trips</a>
+        <h1>
+          <span class="trip-flag">{flag(trip.countryCode)}</span>
+          <span>{trip.country}</span>
+        </h1>
+        <p class="trip-summary">
+          {prettyDates} · {trip.days} {trip.days === 1 ? 'day' : 'days'} ·
+          {' '}{trip.photos.length} {trip.photos.length === 1 ? 'photo' : ''}
+        </p>
+      </header>
+
+      {tripGeoPhotos.length >= 2 && (
+        <div id="trip-map" data-photos={JSON.stringify(tripGeoPhotos.map((p) => ({
+          lat: p.lat, lon: p.lon, thumb: p.thumbs.s, id: p.id,
+        })))}></div>
+      )}
+
+      <div class="trip-days">
+        {days.map(([day, dayPhotos]) => (
+          <section class="trip-day">
+            <h2 class="day-label">{day}<span class="day-count"> · {dayPhotos.length}</span></h2>
+            <div class="day-grid">
+              {dayPhotos.map((p) => (
+                <a class="day-cell" href={`/photos/${p.id}`} title={p.datetime}>
+                  <img
+                    loading="lazy"
+                    decoding="async"
+                    src={p.thumbs.s}
+                    data-medium={p.thumbs.m}
+                    alt=""
+                    onload="this.classList.add('loaded')"
+                  />
+                </a>
+              ))}
+            </div>
+          </section>
+        ))}
+      </div>
+    </main>
+  </div>
+</Layout>
+
+<style is:global>
+  .trip-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-6) var(--space-7) var(--space-8);
+  }
+  .trip-header { margin-bottom: var(--space-5); }
+  .trip-crumb {
+    display: inline-block;
+    font-size: var(--text-md);
+    color: var(--muted);
+    margin-bottom: var(--space-3);
+  }
+  .trip-crumb:hover { color: var(--accent); text-decoration: none; }
+  .trip-header h1 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    font-size: var(--text-3xl);
+    font-weight: 800;
+    margin: 0 0 var(--space-1);
+    letter-spacing: -0.02em;
+  }
+  .trip-header .trip-flag { font-size: 40px; line-height: 1; }
+  .trip-summary { color: var(--muted); margin: 0; font-size: var(--text-md); }
+
+  #trip-map {
+    width: 100%;
+    height: 320px;
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-6);
+    box-shadow: var(--shadow-sm);
+    background: #f8f4f0;
+    overflow: hidden;
+  }
+
+  .trip-days { display: flex; flex-direction: column; gap: var(--space-6); }
+  .trip-day { }
+  .trip-day .day-label {
+    font-size: var(--text-md);
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0.02em;
+    margin: 0 0 var(--space-3);
+  }
+  .trip-day .day-label .day-count { color: var(--muted); font-weight: 400; }
+  .day-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(180px, 100%), 1fr));
+    gap: var(--space-2);
+  }
+  .day-cell {
+    aspect-ratio: 1;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    background: linear-gradient(110deg, #e8e8e8 0%, #f4f4f4 40%, #e8e8e8 80%) #e8e8e8;
+    background-size: 200% 100%;
+    animation: card-shimmer 1.6s ease-in-out infinite;
+    transition: transform 0.2s var(--ease-out), box-shadow 0.2s;
+  }
+  .day-cell:has(img.loaded) { animation: none; background: #eaeaea; }
+  .day-cell:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+  .day-cell img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+  .day-cell img.loaded { opacity: 1; }
+
+  @media (max-width: 720px) {
+    .trip-main { padding: var(--space-5) var(--space-4) var(--space-7); }
+    .trip-header h1 { font-size: var(--text-2xl); }
+    .trip-header .trip-flag { font-size: 32px; }
+    #trip-map { height: 220px; }
+  }
+</style>
+
+{tripGeoPhotos.length >= 2 && (
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" is:inline></script>
+  <script>
+    // Render the trip's photos on a mini-map with a connecting polyline so
+    // the user sees the route they walked. Plain Leaflet — no clustering,
+    // because trip-level density is always low enough to show each pin.
+    const el = document.getElementById('trip-map');
+    if (el && window.L) {
+      const photos = JSON.parse(el.dataset.photos || '[]');
+      if (photos.length) {
+        const map = window.L.map('trip-map', {
+          zoomControl: true,
+          scrollWheelZoom: false, // don't hijack scrolling on a content page
+        });
+        window.L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+          subdomains: 'abcd',
+          attribution: '&copy; OpenStreetMap &copy; CARTO',
+        }).addTo(map);
+
+        const latLngs = photos.map((p) => [p.lat, p.lon]);
+        const line = window.L.polyline(latLngs, {
+          color: '#0366d6',
+          weight: 2.5,
+          dashArray: '4 6',
+          opacity: 0.7,
+        }).addTo(map);
+
+        photos.forEach((p) => {
+          const icon = window.L.divIcon({
+            html: `<div class="photo-marker"><img loading="lazy" src="${p.thumb}" alt=""></div>`,
+            className: '',
+            iconSize: [44, 44],
+            iconAnchor: [22, 22],
+          });
+          window.L.marker([p.lat, p.lon], { icon }).addTo(map)
+            .on('click', () => { window.location.href = `/photos/${p.id}`; });
+        });
+
+        const bounds = window.L.latLngBounds(latLngs);
+        map.fitBounds(bounds.pad(0.2));
+      }
+    }
+  </script>
+)}

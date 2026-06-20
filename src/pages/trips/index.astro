@@ -1,0 +1,152 @@
+---
+export const prerender = false;
+import Layout from '~/layouts/Layout.astro';
+import TopBar from '~/components/TopBar.astro';
+import { getPhotos, getTrips } from '~/lib/photos';
+
+const photos = await getPhotos();
+const trips = await getTrips();
+
+function flag(code: string) {
+  if (!code || code.length !== 2) return '📍';
+  return String.fromCodePoint(
+    ...[...code.toLowerCase()].map((c) => 0x1f1e6 + (c.charCodeAt(0) - 97)),
+  );
+}
+
+function prettyRange(start: string, end: string): string {
+  if (start === end) return start;
+  return `${start} – ${end}`;
+}
+---
+<Layout title="✈️ Trips · Photo Portfolio" description="Auto-detected trips from this photo portfolio.">
+  <div class="app-shell">
+    <TopBar photos={photos} active="trips" />
+    <main class="trips-main">
+      <header class="trips-header">
+        <h1>Trips</h1>
+        <p class="trips-sub">
+          {trips.length} {trips.length === 1 ? 'trip' : 'trips'} · auto-detected
+          (same country, ≤ 7 days between consecutive photos)
+        </p>
+      </header>
+
+      {trips.length === 0 ? (
+        <div class="empty-state">
+          <div class="empty-icon">🗺️</div>
+          <p class="empty-title">No trips yet</p>
+          <p class="empty-hint">Upload some geotagged photos and they'll cluster into trips automatically.</p>
+        </div>
+      ) : (
+        <div class="trips-grid">
+          {trips.map((t) => (
+            <a class="trip-card" href={`/trips/${t.slug}`} aria-label={`${t.country} ${t.start}`}>
+              <div class="trip-hero">
+                <img
+                  loading="lazy"
+                  decoding="async"
+                  src={t.photos[0].thumbs.m}
+                  alt=""
+                  onload="this.classList.add('loaded')"
+                />
+                <span class="trip-count">{t.photos.length}</span>
+              </div>
+              <div class="trip-meta">
+                <div class="trip-title">
+                  <span class="trip-flag">{flag(t.countryCode)}</span>
+                  <span class="trip-country">{t.country}</span>
+                </div>
+                <div class="trip-dates">{prettyRange(t.start, t.end)} · {t.days} {t.days === 1 ? 'day' : 'days'}</div>
+              </div>
+            </a>
+          ))}
+        </div>
+      )}
+    </main>
+  </div>
+</Layout>
+
+<style is:global>
+  .trips-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--space-6) var(--space-7) var(--space-8);
+  }
+  .trips-header { margin-bottom: var(--space-5); }
+  .trips-header h1 {
+    font-size: var(--text-3xl);
+    font-weight: 800;
+    margin: 0 0 var(--space-1);
+    letter-spacing: -0.02em;
+  }
+  .trips-sub { color: var(--muted); margin: 0; font-size: var(--text-md); }
+
+  .trips-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+    gap: var(--space-4);
+  }
+  .trip-card {
+    display: block;
+    background: var(--panel);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    color: inherit;
+    text-decoration: none;
+    transition: transform 0.2s var(--ease-out), box-shadow 0.2s;
+  }
+  .trip-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-md);
+    text-decoration: none;
+  }
+  .trip-hero {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    overflow: hidden;
+    background: linear-gradient(110deg, #e8e8e8 0%, #f4f4f4 40%, #e8e8e8 80%) #e8e8e8;
+    background-size: 200% 100%;
+    animation: card-shimmer 1.6s ease-in-out infinite;
+  }
+  .trip-card:has(img.loaded) .trip-hero { animation: none; background: #eaeaea; }
+  .trip-hero img {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    display: block;
+    opacity: 0;
+    transition: opacity 0.3s, transform 0.4s var(--ease-out);
+  }
+  .trip-hero img.loaded { opacity: 1; }
+  .trip-card:hover .trip-hero img { transform: scale(1.04); }
+  .trip-count {
+    position: absolute;
+    top: var(--space-2);
+    right: var(--space-2);
+    background: rgba(0, 0, 0, 0.65);
+    color: white;
+    font-size: var(--text-sm);
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: var(--radius-pill);
+    backdrop-filter: blur(4px);
+  }
+  .trip-meta { padding: var(--space-3) var(--space-4) var(--space-4); }
+  .trip-title { display: flex; align-items: center; gap: var(--space-2); margin-bottom: 4px; }
+  .trip-flag { font-size: var(--text-xl); line-height: 1; }
+  .trip-country {
+    font-size: var(--text-lg);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .trip-dates {
+    font-size: var(--text-sm);
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (max-width: 720px) {
+    .trips-main { padding: var(--space-5) var(--space-4) var(--space-7); }
+    .trips-header h1 { font-size: var(--text-2xl); }
+  }
+</style>

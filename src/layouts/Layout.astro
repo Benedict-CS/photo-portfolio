@@ -2,6 +2,7 @@
 import '~/styles/global.css';
 import Toast from '~/components/Toast.astro';
 import PasswordPrompt from '~/components/PasswordPrompt.astro';
+import { ClientRouter } from 'astro:transitions';
 
 interface Props {
   title?: string;
@@ -92,6 +93,11 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
       <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     </>
   )}
+
+  {/* Astro's client-side router enables the View Transitions API for
+      cross-page morphing — most usefully, ← / → on the detail page
+      cross-fade the hero image instead of full-reloading the page. */}
+  <ClientRouter />
 </head>
 <body>
   <slot />

@@ -1,5 +1,5 @@
 import type { APIRoute } from 'astro';
-import { getPhotos } from '~/lib/photos';
+import { getPhotos, getTrips } from '~/lib/photos';
 
 export const prerender = false;
 
@@ -9,12 +9,19 @@ export const prerender = false;
  */
 export const GET: APIRoute = async ({ site, url }) => {
   const photos = await getPhotos();
+  const trips = await getTrips();
   const origin = site?.toString().replace(/\/$/, '') || `${url.protocol}//${url.host}`;
 
   const staticUrls = [
     { loc: `${origin}/`, priority: 1.0, changefreq: 'weekly' },
     { loc: `${origin}/timeline`, priority: 0.8, changefreq: 'weekly' },
+    { loc: `${origin}/trips`, priority: 0.7, changefreq: 'weekly' },
     { loc: `${origin}/favorites`, priority: 0.5, changefreq: 'weekly' },
+    ...trips.map((t) => ({
+      loc: `${origin}/trips/${t.slug}`,
+      priority: 0.65,
+      changefreq: 'monthly' as const,
+    })),
   ];
 
   // Detail pages also advertise their hero thumb via the Google Images

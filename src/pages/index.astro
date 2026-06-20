@@ -262,6 +262,11 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   new ResetView().addTo(map);
 
   map.on('click', () => window.dispatchEvent(new Event('preview:close')));
+  // Close the preview as soon as the user starts panning / zooming somewhere
+  // else — keeping the old photo overlaid while they explore another region
+  // is disorienting. dragstart covers mouse + touch; zoomstart covers
+  // scroll-wheel + pinch.
+  map.on('dragstart zoomstart', () => window.dispatchEvent(new Event('preview:close')));
 
   // ---- Time slider: only show photos with datetime <= slider value ----
   const datedPhotos = photos.filter((p) => p.datetime);

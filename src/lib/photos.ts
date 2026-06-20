@@ -461,6 +461,86 @@ export async function getPhotoById(id: string): Promise<PhotoView | undefined> {
   return photos.find((p) => p.id === id);
 }
 
+// ---------- Trip auto-detection ----------
+
+export interface Trip {
+  slug: string;
+  country: string;
+  countryCode: string;
+  /** ISO 'YYYY-MM-DD' of first photo. */
+  start: string;
+  /** ISO 'YYYY-MM-DD' of last photo. */
+  end: string;
+  /** Number of days between start and end (inclusive). */
+  days: number;
+  photos: PhotoView[];
+}
+
+const TRIP_GAP_DAYS = 7;
+
+function trySlug(start: string, country: string, used: Set<string>): string {
+  const base = `${start}-${country.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}`;
+  if (!used.has(base)) return base;
+  let n = 2;
+  while (used.has(`${base}-${n}`)) n++;
+  return `${base}-${n}`;
+}
+
+function finalizeTrip(photos: PhotoView[], used: Set<string>): Trip {
+  const start = photos[0].datetime.slice(0, 10);
+  const end = photos[photos.length - 1].datetime.slice(0, 10);
+  const country = photos[0].country;
+  const countryCode = photos[0].countryCode;
+  const days =
+    Math.floor(
+      (new Date(end).getTime() - new Date(start).getTime()) / 86_400_000,
+    ) + 1;
+  const slug = trySlug(start, country, used);
+  used.add(slug);
+  return { slug, country, countryCode, start, end, days, photos };
+}
+
+/**
+ * Group photos into trips: contiguous runs in the same country with no
+ * gap longer than TRIP_GAP_DAYS between consecutive photos. Singletons
+ * (a single photo) still count — useful for "I went to X for a day".
+ */
+export async function getTrips(): Promise<Trip[]> {
+  const all = await getPhotos();
+  const candidates = all
+    .filter((p) => p.country && p.datetime && p.country !== 'Unlocated')
+    .sort((a, b) => a.datetime.localeCompare(b.datetime));
+
+  if (candidates.length === 0) return [];
+
+  const used = new Set<string>();
+  const trips: Trip[] = [];
+  let bucket: PhotoView[] = [candidates[0]];
+
+  for (let i = 1; i < candidates.length; i++) {
+    const prev = bucket[bucket.length - 1];
+    const cur = candidates[i];
+    const gapDays =
+      (new Date(cur.datetime).getTime() - new Date(prev.datetime).getTime()) /
+      86_400_000;
+    if (cur.country === prev.country && gapDays <= TRIP_GAP_DAYS) {
+      bucket.push(cur);
+    } else {
+      trips.push(finalizeTrip(bucket, used));
+      bucket = [cur];
+    }
+  }
+  trips.push(finalizeTrip(bucket, used));
+
+  // Newest first.
+  return trips.reverse();
+}
+
+export async function getTripBySlug(slug: string): Promise<Trip | undefined> {
+  const trips = await getTrips();
+  return trips.find((t) => t.slug === slug);
+}
+
 export async function getPhotoByPath(p: string): Promise<PhotoView | undefined> {
   const rows = await db.select().from(PhotoTable).where(eq(PhotoTable.path, p));
   return rows[0] ? rowToView(rows[0]) : undefined;

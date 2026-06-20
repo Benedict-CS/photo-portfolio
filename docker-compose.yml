@@ -51,11 +51,14 @@ services:
       # Backup zips land here.
       - ./backups:/app/backups
     healthcheck:
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:4321/health"]
+      # Use Node's built-in fetch (Node 22+) instead of busybox wget —
+      # alpine's wget has quirks with -O- that flag the container unhealthy
+      # even when /health returns 200. Node is guaranteed to be in the image.
+      test: ["CMD", "node", "-e", "fetch('http://localhost:4321/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     # Cap container log on disk — without this, a chatty error loop can
     # silently fill /var/lib/docker. 3 × 10 MB = at most 30 MB per service.
     logging:
