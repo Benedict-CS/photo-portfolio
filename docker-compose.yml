@@ -56,3 +56,10 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    # Cap container log on disk — without this, a chatty error loop can
+    # silently fill /var/lib/docker. 3 × 10 MB = at most 30 MB per service.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

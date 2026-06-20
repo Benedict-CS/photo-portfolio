@@ -51,3 +51,67 @@ try {
   console.error('Backup failed:', err.message || err);
   process.exit(1);
 }
+
+// ---- Retention: grandfather-father-son rotation ---------------------------
+// Without pruning, a daily cron piles up a zip a day forever. Cap the set:
+//   - last 7 daily backups (one per calendar day)
+//   - one per ISO week for the last 4 weeks
+//   - one per calendar month for the last 12 months
+// Anything not in those buckets gets deleted. Worst case ≈ 23 zips on disk.
+function pruneOldBackups() {
+  const DAY = 86_400_000;
+  const now = Date.now();
+
+  const backups = fs.readdirSync(BACKUPS_DIR)
+    .filter((f) => /^photo-portfolio-\d{4}-\d{2}-\d{2}/.test(f) && f.endsWith('.zip'))
+    .map((name) => {
+      const m = name.match(/^photo-portfolio-(\d{4}-\d{2}-\d{2})/);
+      return { name, time: new Date(m[1]).getTime() };
+    })
+    .sort((a, b) => b.time - a.time); // newest first
+
+  const keep = new Set();
+
+  // Daily — newest backup per calendar day, last 7 days.
+  const daySeen = new Set();
+  for (const b of backups) {
+    const dayKey = Math.floor((now - b.time) / DAY);
+    if (dayKey < 7 && !daySeen.has(dayKey)) {
+      daySeen.add(dayKey);
+      keep.add(b.name);
+    }
+  }
+
+  // Weekly — newest backup per ISO week, last 4 weeks.
+  const weekSeen = new Set();
+  for (const b of backups) {
+    const weekKey = Math.floor((now - b.time) / (7 * DAY));
+    if (weekKey < 4 && !weekSeen.has(weekKey)) {
+      weekSeen.add(weekKey);
+      keep.add(b.name);
+    }
+  }
+
+  // Monthly — newest backup per calendar month, last 12 months.
+  const monthSeen = new Set();
+  for (const b of backups) {
+    const d = new Date(b.time);
+    const monthKey = `${d.getUTCFullYear()}-${d.getUTCMonth()}`;
+    const monthsAgo = (now - b.time) / (30 * DAY);
+    if (monthsAgo < 12 && !monthSeen.has(monthKey)) {
+      monthSeen.add(monthKey);
+      keep.add(b.name);
+    }
+  }
+
+  let pruned = 0;
+  for (const b of backups) {
+    if (!keep.has(b.name)) {
+      fs.unlinkSync(path.join(BACKUPS_DIR, b.name));
+      pruned++;
+    }
+  }
+  if (pruned > 0) console.log(`✓ Pruned ${pruned} old backup(s); ${keep.size} retained.`);
+}
+
+pruneOldBackups();

@@ -102,6 +102,66 @@ systemctl list-timers photo-portfolio-backup.timer
 sudo systemctl start  photo-portfolio-backup   # run a backup now
 ```
 
+## Migrating to TrueNAS Scale (or another VM)
+
+Once you're on Docker, the whole app is just **one folder + one `docker compose up`**.
+Two paths depending on the target:
+
+### Plain VM-to-VM (rsync)
+
+On the source VM, stop the app:
+
+```bash
+docker compose down
+```
+
+On the destination (already has Docker installed):
+
+```bash
+sudo rsync -av --info=progress2 \
+  ben@<old-vm>:~/photo-portfolio/ \
+  ~/photo-portfolio/
+cd ~/photo-portfolio
+docker compose up -d --build
+```
+
+That's it — `.astro/`, `public/thumbs/`, `backups/`, `.env`, source code all
+come over in one shot. The image rebuilds locally from the Dockerfile.
+
+### TrueNAS Scale
+
+Two flavours, pick one:
+
+**a) Custom App / docker-compose (recommended)** — TrueNAS Scale (≥ 24.10
+"Electric Eel") ships native Docker. Create a dataset for the app:
+
+```bash
+# On TrueNAS shell
+mkdir -p /mnt/<pool>/apps/photo-portfolio
+rsync -av ben@<old-vm>:~/photo-portfolio/ /mnt/<pool>/apps/photo-portfolio/
+cd /mnt/<pool>/apps/photo-portfolio
+docker compose up -d --build
+```
+
+Open the Apps → Custom App UI and point it at the compose file if you want
+TrueNAS to manage the lifecycle, or just leave it as `docker compose` on
+the shell. Either way, the bind-mounted dataset is the source of truth
+and snapshot-able with ZFS.
+
+**b) Built-in app catalog** — none exists for this app (it's bespoke), so
+use option (a).
+
+### After migration
+
+```bash
+# Sanity-check on the new host:
+curl -fsS http://localhost:4321/health | jq
+docker compose logs --tail 50 app
+
+# Update DNS / reverse proxy to point at the new IP, then optionally
+# tear down the old VM.
+```
+
 ## Rollback Docker → bare Node
 
 ```bash
