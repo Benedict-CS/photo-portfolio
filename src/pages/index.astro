@@ -50,8 +50,10 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     background: none;
     border: none;
     cursor: pointer;
-    width: 36px;
-    height: 36px;
+    /* WCAG SC 2.5.5: 44×44 minimum touch target — keep the visible pill
+       compact, but expand the hit area with padding on touch viewports. */
+    width: 44px;
+    height: 44px;
     border-radius: 999px;
     font-size: 16px;
     color: var(--text);

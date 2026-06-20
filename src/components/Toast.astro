@@ -55,8 +55,15 @@
   function showToast(type: string, message: string, ttl = 2400) {
     const el = document.createElement('div');
     el.className = `toast ${type}`;
-    const icon = type === 'success' ? '✓' : type === 'error' ? '⚠' : '·';
-    el.innerHTML = `<span class="icon">${icon}</span><span>${message}</span>`;
+    // Build via DOM APIs — never interpolate user-controlled `message` into
+    // an innerHTML string, or a malicious toast dispatch could XSS.
+    const iconChar = type === 'success' ? '✓' : type === 'error' ? '⚠' : '·';
+    const iconEl = document.createElement('span');
+    iconEl.className = 'icon';
+    iconEl.textContent = iconChar;
+    const textEl = document.createElement('span');
+    textEl.textContent = message;
+    el.append(iconEl, textEl);
     stack.appendChild(el);
     // Trigger transition
     requestAnimationFrame(() => el.classList.add('show'));

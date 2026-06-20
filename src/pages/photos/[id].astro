@@ -731,8 +731,11 @@ function flag(code: string) {
 
   document.getElementById('favorite-btn')?.addEventListener('click', async (e) => {
     const btn = e.currentTarget;
+    // Guard against rapid double-clicks that would race two POSTs.
+    if (btn.disabled) return;
     const now = btn.dataset.fav === '1';
     const next = !now;
+    btn.disabled = true;
     btn.dataset.fav = next ? '1' : '0';
     btn.classList.toggle('on', next);
     btn.textContent = next ? '⭐' : '☆';
@@ -745,6 +748,8 @@ function flag(code: string) {
       btn.classList.toggle('on', now);
       btn.textContent = now ? '⭐' : '☆';
       toast('error', `Failed: ${err.message || err}`);
+    } finally {
+      btn.disabled = false;
     }
   });
 
