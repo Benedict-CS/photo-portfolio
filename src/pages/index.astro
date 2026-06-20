@@ -156,9 +156,19 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     const mapDiv = document.getElementById('map');
     if (!mapDiv) return; // Not on / — listener fires page-wide.
 
-    // Double-init guard: the initial-load synchronous RAF AND the
-    // astro:page-load listener both fire init on a fresh navigation.
-    // If a previous call already mounted on THIS same DOM node, bail —
+    // After a ClientRouter body swap, the new <script src="leaflet.js"
+    // is:inline> tags are async-fetched in the background. This inline
+    // define:vars script runs synchronously, so on the second visit we
+    // can race ahead of both leaflet.js and leaflet.markercluster.js.
+    // Poll on a short timer until both globals are ready, then retry.
+    if (!window.L || typeof window.L.markerClusterGroup !== 'function') {
+      setTimeout(initLeafletMap, 50);
+      return;
+    }
+
+    // Double-init guard: both the astro:page-load listener and any
+    // synchronous bootstrap can fire init on a fresh navigation. If a
+    // previous call already mounted on THIS same DOM node, bail —
     // otherwise Leaflet throws "Map container is already initialized".
     if (window.__leafletMap && window.__leafletMap._container === mapDiv) {
       return;
