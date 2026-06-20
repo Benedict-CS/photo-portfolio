@@ -156,6 +156,14 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     const mapDiv = document.getElementById('map');
     if (!mapDiv) return; // Not on / — listener fires page-wide.
 
+    // Double-init guard: the initial-load synchronous RAF AND the
+    // astro:page-load listener both fire init on a fresh navigation.
+    // If a previous call already mounted on THIS same DOM node, bail —
+    // otherwise Leaflet throws "Map container is already initialized".
+    if (window.__leafletMap && window.__leafletMap._container === mapDiv) {
+      return;
+    }
+
     // Dispose any prior Leaflet instance before we mount on the (new) div.
     if (window.__leafletMap) {
       try { window.__leafletMap.remove(); } catch {}
@@ -175,11 +183,13 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   });
 
   // Recompute on window resize — but never force-snap the current view, just
-  // tighten the floor so subsequent zoom-outs are limited.
+  // tighten the floor so subsequent zoom-outs are limited. The listener is
+  // intentionally not cleaned up between mounts (cheap one-line callback;
+  // the previous map.setMinZoom call is a harmless no-op on a disposed map).
   window.addEventListener('resize', () => {
     const z = minZoomForViewport();
-    if (map.getMinZoom() !== z) map.setMinZoom(z);
-  }, { signal: __signal });
+    try { if (map.getMinZoom() !== z) map.setMinZoom(z); } catch {}
+  });
 
   L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
     maxZoom: 19,
