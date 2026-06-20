@@ -54,21 +54,9 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
     <link rel="preload" as="image" href={src} />
   ))}
 
-  {/* Inter — primary type. Preconnect to fonts.googleapis (CSS) AND
-      fonts.gstatic (font files) so DNS+TLS overlap with HTML download.
-      `display=swap` shows the system fallback first, then swaps in Inter
-      when ready — avoids FOIT. */}
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    rel="stylesheet"
-    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
-  />
-
   {needsLeaflet && (
     <>
-      {/* Warm up CDN connections in parallel with the HTML download. */}
-      <link rel="preconnect" href="https://unpkg.com" crossorigin />
+      {/* Carto basemap tiles still come from CARTO's CDN — DNS-prefetch only. */}
       <link rel="dns-prefetch" href="https://basemaps.cartocdn.com" />
     </>
   )}
@@ -88,9 +76,9 @@ const ogImageUrl = ogImage.startsWith('http') ? ogImage : `${siteBase}${ogImage}
 
   {needsLeaflet && (
     <>
-      <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-      <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+      <link rel="stylesheet" href="/lib/leaflet/leaflet.css" />
+      <link rel="stylesheet" href="/lib/leaflet/MarkerCluster.css" />
+      <link rel="stylesheet" href="/lib/leaflet/MarkerCluster.Default.css" />
     </>
   )}
 

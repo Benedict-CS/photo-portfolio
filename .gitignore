@@ -1,5 +1,6 @@
 node_modules/
 dist/
+public/lib/
 .astro/*
 !.astro/photos-cache.json
 .env

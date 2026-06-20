@@ -5,7 +5,8 @@
   "private": true,
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/preserve-db.mjs save && astro build && node scripts/preserve-db.mjs restore",
+    "vendor": "node scripts/copy-vendor.mjs",
+    "build": "node scripts/copy-vendor.mjs && node scripts/preserve-db.mjs save && astro build && node scripts/preserve-db.mjs restore",
     "preview": "astro preview",
     "sync": "astro db execute scripts/sync.mjs",
     "predeploy": "npm run sync && npm run build",
@@ -15,6 +16,7 @@
   "dependencies": {
     "@astrojs/db": "^0.14.14",
     "@astrojs/node": "^9.5.5",
+    "@fontsource/inter": "^5.2.8",
     "astro": "^5.0.0",
     "dotenv": "^17.4.2",
     "exifr": "^7.1.3",

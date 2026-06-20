@@ -168,7 +168,7 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 </style>
 
 {tripGeoPhotos.length >= 2 && (
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" is:inline></script>
+  <script src="/lib/leaflet/leaflet.js" is:inline></script>
   <script>
     // ClientRouter swaps the body each navigation: the previous trip's
     // Leaflet instance is still alive but bound to a detached #trip-map
