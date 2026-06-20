@@ -9,6 +9,13 @@ COPY package.json package-lock.json* ./
 RUN npm ci --no-audit --no-fund
 
 COPY . .
+
+# Public site URL bakes into the build (Astro reads SITE_URL in
+# astro.config.mjs for canonical, og:url, sitemap entries). Override per
+# environment with `docker build --build-arg SITE_URL=https://...`.
+ARG SITE_URL=http://localhost:4321
+ENV SITE_URL=${SITE_URL}
+
 # Builds with Astro DB; ASTRO_DATABASE_FILE is wired via .env or runtime env.
 RUN npm run build
 
@@ -30,6 +37,8 @@ COPY --from=builder --chown=app:app /app/dist ./dist
 COPY --from=builder --chown=app:app /app/public ./public
 COPY --from=builder --chown=app:app /app/db ./db
 COPY --from=builder --chown=app:app /app/.astro ./.astro
+COPY --from=builder --chown=app:app /app/scripts ./scripts
+COPY --from=builder --chown=app:app /app/metadata.json ./metadata.json
 COPY --from=builder --chown=app:app /app/package.json ./
 
 USER app

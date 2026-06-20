@@ -1,115 +1,141 @@
 # Deploy — LAN Ubuntu VM
 
-This folder contains the scripts and systemd units needed to run the
-portfolio on a Linux VM as a self-managed service.
+Run modes:
 
-Tested on **Ubuntu 22.04 / 24.04**, bare Node 22 via NodeSource, no Docker.
-
-## What gets installed
-
-| Piece | Purpose | Location |
+| Mode | When to use | Setup |
 | --- | --- | --- |
-| `photo-portfolio.service` | The Astro/Node server | systemd unit |
-| `photo-portfolio-backup.{service,timer}` | Daily zip of DB + thumbs | 03:30 local time |
-| Node 22.x | Runtime | `/usr/bin/node` via NodeSource |
-| App code | Repo clone | `~/photo-portfolio/` |
-| Backups | Zip archives | `~/photo-portfolio/backups/` |
+| **Bare Node + systemd** | First-ever install, quick debugging | `bash deploy/install.sh` |
+| **Docker compose** | Recommended once stable; survives VM rebuilds | `bash deploy/migrate-to-docker.sh` |
 
-The app listens on **`0.0.0.0:4321`**, so any device on the LAN can hit
-`http://<vm-ip>:4321/`.
+The bare-Node path is simpler for the first deploy; the Docker path is the
+long-term home and what every other service in the portal uses.
 
-## First-time install
+The app listens on **`0.0.0.0:4321`**. Any LAN device can hit
+`http://<vm-ip>:4321/`. Reverse-proxy it to a real domain in front (nginx
+/ Caddy / Cloudflare Tunnel) — none of the scripts assume a proxy.
+
+---
+
+## First-time install (bare Node)
 
 ```bash
-# On the VM, as your normal user (e.g. ben — NOT root):
 ssh ben@192.168.1.xxx
 
-# 1. Clone the repo into your home directory
+# 1. Clone into your home directory
 git clone https://github.com/Benedict-CS/photo-portfolio.git ~/photo-portfolio
 cd ~/photo-portfolio
 
-# 2. Copy your .env from the dev machine (run this on the Windows side):
+# 2. Copy your .env from the dev machine (on Windows):
 #    scp .env ben@192.168.1.xxx:photo-portfolio/
 #    Required keys:
 #      NEXTCLOUD_URL=https://cloud.ben.winlab.tw
-#      NEXTCLOUD_SHARE_TOKEN=65XGM5PRjLPnj8q
-#      NEXTCLOUD_SHARE_PASSWORD=...
-#      ADMIN_PASSWORD=...
+#      NEXTCLOUD_SHARE_TOKEN=<your token>
+#      NEXTCLOUD_SHARE_PASSWORD=<your password>
+#      ADMIN_PASSWORD=<your admin password>
 #    Optional:
-#      SITE_URL=http://192.168.1.xxx:4321   # for canonical/sitemap URLs
+#      SITE_URL=https://gallery.ben.winlab.tw   # for canonical/sitemap URLs
 
-# 3. Run the installer — it'll ask for your sudo password.
+# 3. Run the installer
 bash deploy/install.sh
 ```
 
-You should see `Open the site: http://192.168.1.xxx:4321/` at the end.
-Open it in a browser; the map should load with your photos.
+You'll see `Open the site: http://<vm-ip>:4321/` at the end.
 
-## Updates
+## Migrating bare Node → Docker
+
+Once the bare-Node install has run cleanly for a few days, convert to Docker:
 
 ```bash
 ssh ben@192.168.1.xxx
 cd ~/photo-portfolio
-bash deploy/update.sh
+git pull
+bash deploy/migrate-to-docker.sh
 ```
 
-This pulls the latest `main`, rebuilds, and restarts the service.
+The script:
+
+- installs Docker Engine + compose plugin from the official apt repo (if absent)
+- stops + disables the systemd `photo-portfolio.service` (left on disk for rollback)
+- repoints the nightly backup timer at `docker compose exec`
+- builds the image, bakes `SITE_URL` from `.env` into the bundle, and starts the container
+- waits for `/health` before reporting done
+
+After this, `~/photo-portfolio/{.astro,public/thumbs,backups}` are bind-mounted
+into the container, so you can still inspect/edit them from the host.
+
+## Updates (works in either mode)
+
+```bash
+cd ~/photo-portfolio
+bash deploy/update.sh           # NOT sudo — it'll prompt for sudo where needed
+```
+
+`update.sh` auto-detects the current mode and does the right thing
+(`docker compose up -d --build` vs `npm run build` + `systemctl restart`).
 
 ## Operations cheat-sheet
 
+### Bare-Node mode
+
 ```bash
-# Service
 sudo systemctl status  photo-portfolio
 sudo systemctl restart photo-portfolio
-sudo systemctl stop    photo-portfolio
-
-# Logs (live tail)
 journalctl -u photo-portfolio -f
-
-# Health check (uptime monitors / cron)
-curl http://localhost:4321/health
-
-# Backup — manual run
-sudo systemctl start photo-portfolio-backup
-
-# Next scheduled backup
-systemctl list-timers photo-portfolio-backup.timer
-
-# Restore (from a backup zip)
-unzip -d ~/restore backups/photo-portfolio-YYYY-MM-DD.zip
-# then copy .astro/content.db + public/thumbs/ back into the app dir
-# and `sudo systemctl restart photo-portfolio`
 ```
 
-## Network
+### Docker mode
 
-LAN-only by default, no HTTPS. If you later want `http://photos.local`
-without typing the port, you have two clean options:
+```bash
+docker compose ps
+docker compose logs -f app
+docker compose restart app
+docker compose down            # stop
+docker compose up -d           # start
+docker compose exec app sh     # poke around inside
+```
 
-1. **Caddy** (recommended — 5 lines):
+### Both
 
-   ```caddyfile
-   :80 {
-     reverse_proxy localhost:4321
-     encode gzip
-     header Cache-Control "public, max-age=60"
-     handle_path /thumbs/* {
-       header Cache-Control "public, max-age=31536000, immutable"
-       reverse_proxy localhost:4321
-     }
-   }
-   ```
+```bash
+curl http://localhost:4321/health        # JSON health blob
+systemctl list-timers photo-portfolio-backup.timer
+sudo systemctl start  photo-portfolio-backup   # run a backup now
+```
 
-   `sudo apt install caddy && sudo systemctl enable --now caddy`.
+## Rollback Docker → bare Node
 
-2. **nginx** — same idea, more boilerplate.
+```bash
+docker compose down
+sudo systemctl enable --now photo-portfolio.service
+```
+
+(The systemd unit file is left on `/etc/systemd/system/` after migration
+specifically to make this trivial.)
+
+## Restore from backup
+
+Backups live in `~/photo-portfolio/backups/photo-portfolio-YYYY-MM-DD.zip`
+and contain `.astro/content.db` + `metadata.json` + `public/thumbs/`.
+
+```bash
+cd ~/photo-portfolio
+# stop whichever mode is running
+docker compose down 2>/dev/null || sudo systemctl stop photo-portfolio
+
+unzip -o backups/photo-portfolio-YYYY-MM-DD.zip
+# unzip restores files into the working directory in-place
+
+# start again
+docker compose up -d 2>/dev/null || sudo systemctl start photo-portfolio
+```
 
 ## Uninstall
 
 ```bash
-sudo systemctl disable --now photo-portfolio photo-portfolio-backup.timer
+docker compose down 2>/dev/null || true
+sudo systemctl disable --now photo-portfolio photo-portfolio-backup.timer 2>/dev/null || true
 sudo rm /etc/systemd/system/photo-portfolio*.service \
-        /etc/systemd/system/photo-portfolio*.timer
+        /etc/systemd/system/photo-portfolio*.timer 2>/dev/null || true
 sudo systemctl daemon-reload
 rm -rf ~/photo-portfolio
 ```

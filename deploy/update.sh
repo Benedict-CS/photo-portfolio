@@ -3,8 +3,8 @@
 #
 #   cd ~/photo-portfolio && bash deploy/update.sh
 #
-# Pulls the latest main, reinstalls deps if package-lock changed,
-# rebuilds, and reloads the systemd service.
+# Auto-detects whether the app is running under Docker (compose) or
+# bare-Node systemd, and does the right thing in each case.
 
 set -euo pipefail
 
@@ -21,6 +21,15 @@ BEFORE_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
 git reset --hard origin/main
 AFTER_LOCK="$(git rev-parse HEAD:package-lock.json 2>/dev/null || true)"
 
+# --- Docker mode -------------------------------------------------------------
+if command -v docker >/dev/null && docker compose ps --services 2>/dev/null | grep -q "^app$"; then
+  say "Docker mode — rebuilding and restarting the container"
+  docker compose up -d --build
+  say "Done. Tail logs with:  docker compose logs -f app"
+  exit 0
+fi
+
+# --- Bare-Node systemd mode --------------------------------------------------
 if [[ "$BEFORE_LOCK" != "$AFTER_LOCK" || ! -d node_modules ]]; then
   say "Lockfile changed → npm ci"
   npm ci --no-audit --no-fund
@@ -31,7 +40,7 @@ fi
 say "Rebuilding"
 npm run build
 
-say "Restarting service"
+say "Restarting systemd service"
 sudo systemctl restart "${SERVICE_NAME}.service"
 
 say "Done. Current status:"

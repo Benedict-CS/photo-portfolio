@@ -1,0 +1,49 @@
+# Production compose file for the photo portfolio.
+#
+# Volumes are bind-mounts to the host's checkout so the same data (DB,
+# thumbs, backups) survives container rebuilds AND remains directly
+# editable from the shell on the host (e.g. `sqlite3 .astro/content.db`).
+#
+# First-time install:
+#   docker compose up -d --build
+#
+# Update (after `git pull`):
+#   docker compose up -d --build
+#
+# Backups:
+#   docker compose exec app npm run backup     # one-off
+#   (or use the systemd timer that calls this — see deploy/README.md)
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        # SITE_URL bakes into Astro config (canonical, og:url, sitemap).
+        # Override via `SITE_URL=https://... docker compose up -d --build`.
+        SITE_URL: ${SITE_URL:-http://localhost:4321}
+    image: photo-portfolio:latest
+    container_name: photo-portfolio
+    restart: unless-stopped
+    ports:
+      - "4321:4321"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "4321"
+    volumes:
+      # SQLite DB — must persist across rebuilds.
+      - ./.astro:/app/.astro
+      # Generated thumbnails — regenerable, but cheap to keep so the
+      # first request after a rebuild doesn't re-fetch from Nextcloud.
+      - ./public/thumbs:/app/public/thumbs
+      # Backup zips land here.
+      - ./backups:/app/backups
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:4321/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
