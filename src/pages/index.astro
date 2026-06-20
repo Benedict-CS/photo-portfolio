@@ -234,7 +234,7 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
       const thumb = top?.options?.photoThumb || '';
       return L.divIcon({
         html: `<div class="photo-cluster">
-          <div class="stack"><img src="${thumb}" alt=""></div>
+          <div class="stack"><img src="${thumb}" alt="" loading="lazy" decoding="async"></div>
           <span class="badge">${count}</span>
         </div>`,
         className: '',

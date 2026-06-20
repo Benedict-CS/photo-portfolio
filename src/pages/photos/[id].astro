@@ -75,6 +75,7 @@ function flag(code: string) {
         data-original={photo.originalUrl}
         alt={photo.description || `${photo.country || 'Photo'}${prettyDate ? ` · ${prettyDate}` : ''}`}
         id="hero"
+        loading="eager"
         decoding="async"
         fetchpriority="high"
         transition:name="detail-hero"
