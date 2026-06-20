@@ -137,7 +137,16 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   // cleans up all signal-bound listeners just before the next page swap.
   const __pageAbort = new AbortController();
   const __signal = __pageAbort.signal;
-  document.addEventListener('astro:before-swap', () => __pageAbort.abort(), { once: true, signal: __signal });
+  document.addEventListener('astro:before-swap', () => {
+    __pageAbort.abort();
+    // Tear down the previous Leaflet instance — its DOM is about to
+    // disappear with the body swap. Holding a stale reference would
+    // confuse Leaflet on the next mount.
+    if (window.__leafletMap) {
+      try { window.__leafletMap.remove(); } catch {}
+      window.__leafletMap = null;
+    }
+  }, { once: true, signal: __signal });
 
   // Compute the minimum zoom that still keeps the world strictly wider than
   // the viewport — guarantees you never see the same marker twice on screen.
@@ -147,6 +156,12 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     return Math.max(2, Math.ceil(Math.log2(window.innerWidth / 256)));
   }
 
+  // Wrap the entire Leaflet setup in a function so we can defer it until
+  // the swapped-in DOM has been laid out. Without the deferral, when you
+  // navigate /timeline → /, define:vars re-executes BEFORE the new #map
+  // div has its computed dimensions — Leaflet then mounts into a 0×0
+  // container and the user sees a blank pane until they reload the page.
+  function initLeafletMap() {
   const L = window.L;
   const map = L.map('map', {
     zoomControl: true,
@@ -401,4 +416,16 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
       if (map.hasLayer(routeLayer)) map.removeLayer(routeLayer);
     }
   }
+
+    // Park the instance on window so a future before-swap can dispose it.
+    window.__leafletMap = map;
+
+    // Belt-and-braces: tell Leaflet to recompute its container size in
+    // the next frame, in case CSS hadn't fully applied when we mounted.
+    requestAnimationFrame(() => map.invalidateSize());
+  } // end initLeafletMap()
+
+  // Defer until the next animation frame so #map has a layout box. On a
+  // fresh page load both initialization paths converge to the same call.
+  requestAnimationFrame(initLeafletMap);
 </script>
