@@ -92,6 +92,18 @@ body > #pw-modal { animation: none; }
 a, button { transition: background-color 0.15s, color 0.15s, transform 0.15s, box-shadow 0.15s; }
 img { transition: opacity 0.18s; }
 
+/* Tactile press feedback — every button/link nudges down 1 px when
+   actively clicked. Scoped tight so it doesn't fight buttons that
+   already animate their own active state (e.g. .fav-btn.bursting,
+   .page-nav). */
+button:not(:disabled):active,
+a:active {
+  transform: translateY(1px);
+}
+@media (prefers-reduced-motion: reduce) {
+  button:not(:disabled):active, a:active { transform: none; }
+}
+
 /* Keyboard-only focus ring. Mouse focus stays clean; tab navigation lights
    up. Components that ship their own focus styles can override locally. */
 a:focus-visible,
@@ -236,13 +248,25 @@ a:hover { text-decoration: underline; }
   cursor: pointer;
   background: #ddd;
   box-sizing: border-box;
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.18s var(--ease-out), box-shadow 0.18s, border-color 0.18s;
+  /* Spring into place on first paint — feels like the photos are landing. */
+  animation: marker-drop 0.45s var(--ease-out) backwards;
+}
+@keyframes marker-drop {
+  0%   { transform: scale(0.4) translateY(-12px); opacity: 0; }
+  60%  { transform: scale(1.08) translateY(0);    opacity: 1; }
+  100% { transform: scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .photo-marker { animation: none; }
 }
 .photo-marker:hover {
-  transform: scale(1.15);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  transform: scale(1.18);
+  box-shadow: 0 6px 22px rgba(0,0,0,0.55);
+  border-color: var(--accent);
   z-index: 1000;
 }
+.photo-marker:active { transform: scale(1.05); }
 .photo-marker img {
   position: absolute;
   inset: 0;

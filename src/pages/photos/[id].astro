@@ -236,6 +236,18 @@ function flag(code: string) {
     transform: translateY(-50%) scale(1.08);
     text-decoration: none;
   }
+  .detail-page .page-nav:active { transform: translateY(-50%) scale(0.96); }
+
+  /* First-paint nudge — the arrows pulse outward twice so the user
+     notices they can navigate left/right. Removed by JS once they
+     interact (click, keypress, hover) so it doesn't keep distracting. */
+  @keyframes nav-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.0); }
+    50%      { box-shadow: 0 0 0 10px rgba(255,255,255,0.18); }
+  }
+  .detail-page .page-nav.hint {
+    animation: nav-pulse 1.4s ease-in-out 2;
+  }
 
   .detail-page .stage {
     flex: 1;
@@ -333,9 +345,45 @@ function flag(code: string) {
     font-size: 16px;
     font-family: inherit;
     transition: transform 0.18s, background 0.18s;
+    position: relative;
   }
   .detail-page .fav-btn:hover { background: rgba(255,255,255,0.22); transform: scale(1.1); }
   .detail-page .fav-btn.on { color: #ffcd3a; background: rgba(255, 205, 58, 0.18); }
+
+  /* ⭐ click feedback: a quick bounce on the star, plus three sparkle
+     particles fanning out. The 'bursting' class is added briefly via JS
+     when the user activates favourite — removed after the animation
+     completes so it can re-fire on the next click. */
+  @keyframes fav-bounce {
+    0%   { transform: scale(1); }
+    30%  { transform: scale(1.45); }
+    55%  { transform: scale(0.92); }
+    100% { transform: scale(1.1); }
+  }
+  .detail-page .fav-btn.bursting { animation: fav-bounce 0.4s var(--ease-out); }
+
+  .detail-page .fav-btn .sparkle {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #ffcd3a;
+    pointer-events: none;
+    opacity: 0;
+  }
+  .detail-page .fav-btn.bursting .sparkle {
+    animation: fav-sparkle 0.55s var(--ease-out) forwards;
+  }
+  .detail-page .fav-btn.bursting .sparkle:nth-child(1) { --tx:  18px; --ty: -22px; animation-delay: 0.04s; }
+  .detail-page .fav-btn.bursting .sparkle:nth-child(2) { --tx: -20px; --ty: -14px; animation-delay: 0.08s; }
+  .detail-page .fav-btn.bursting .sparkle:nth-child(3) { --tx:   2px; --ty: -28px; animation-delay: 0.00s; }
+  @keyframes fav-sparkle {
+    0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+    20%  { opacity: 1; }
+    100% { opacity: 0; transform: translate(calc(-50% + var(--tx)), calc(-50% + var(--ty))) scale(0.2); }
+  }
   .detail-page .loc-btn.danger {
     background: rgba(180, 50, 50, 0.25);
     color: #ffb0b0;
@@ -551,6 +599,25 @@ function flag(code: string) {
       else window.location.href = '/';
     }
   });
+
+  // First-paint nudge: pulse the ← → buttons twice so the user notices
+  // they can navigate. Drops the class on first interaction so it
+  // doesn't loop visibly. Only fires for users who haven't seen the
+  // hint before (localStorage flag).
+  const HINT_KEY = 'detail-arrow-hint-seen';
+  if (!localStorage.getItem(HINT_KEY)) {
+    const arrows = document.querySelectorAll('.detail-page .page-nav');
+    arrows.forEach((a) => a.classList.add('hint'));
+    const drop = () => {
+      arrows.forEach((a) => a.classList.remove('hint'));
+      localStorage.setItem(HINT_KEY, '1');
+      window.removeEventListener('keydown', drop);
+      arrows.forEach((a) => a.removeEventListener('mouseenter', drop));
+    };
+    setTimeout(drop, 3200); // pulse animation runs 2 × 1.4s
+    window.addEventListener('keydown', drop, { once: true });
+    arrows.forEach((a) => a.addEventListener('mouseenter', drop, { once: true }));
+  }
 
   document.getElementById('hero')?.addEventListener('click', () => {
     window.open(originalUrl, '_blank');
@@ -769,6 +836,18 @@ function flag(code: string) {
     btn.dataset.fav = next ? '1' : '0';
     btn.classList.toggle('on', next);
     btn.textContent = next ? '⭐' : '☆';
+    // Only burst when activating (going OFF -> ON). Re-injects three
+    // sparkle nodes each time so the CSS animation re-fires cleanly.
+    if (next) {
+      btn.querySelectorAll('.sparkle').forEach((s) => s.remove());
+      for (let i = 0; i < 3; i++) {
+        const s = document.createElement('span');
+        s.className = 'sparkle';
+        btn.appendChild(s);
+      }
+      btn.classList.add('bursting');
+      setTimeout(() => btn.classList.remove('bursting'), 600);
+    }
     try {
       await postMetadata({ favorite: next });
       toast('success', next ? '⭐ Added to favorites' : 'Removed from favorites');

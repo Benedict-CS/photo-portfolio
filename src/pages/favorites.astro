@@ -78,11 +78,36 @@ favorites.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
   .fav-card {
     position: relative;
     aspect-ratio: 4 / 3;
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     overflow: hidden;
-    background: #ddd;
     color: inherit;
     text-decoration: none;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.2s var(--ease-out), box-shadow 0.2s;
+    /* Skeleton shimmer until the actual photo loads — gives the empty
+       card visual interest instead of a flat gray rectangle. The
+       `.loaded` class on the inner img switches the background off
+       once the photo paints. */
+    background:
+      linear-gradient(110deg,
+        #e8e8e8 0%, #f4f4f4 40%, #e8e8e8 80%) #e8e8e8;
+    background-size: 200% 100%;
+    animation: card-shimmer 1.6s ease-in-out infinite;
+  }
+  .fav-card:has(img.loaded) {
+    animation: none;
+    background: #eaeaea;
+  }
+  .fav-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-md);
+  }
+  @keyframes card-shimmer {
+    0%   { background-position: 100% 0; }
+    100% { background-position: -100% 0; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .fav-card { animation: none; background: #eaeaea; }
   }
   .fav-card img {
     width: 100%;
