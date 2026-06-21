@@ -175,9 +175,11 @@ const totalNeedsAction = buckets[0].photos.length;
 
   .bucket-grid {
     display: grid;
-    /* min(360px, 100%) prevents a single column from overflowing a viewport
-       narrower than 360px (e.g. iPhone SE in landscape, foldables folded). */
-    grid-template-columns: repeat(auto-fit, minmax(min(360px, 100%), 1fr));
+    /* The bucket card has internal padding so the 360 px minimum was eating
+       extra space and forcing horizontal scroll on 360 px phones. Drop the
+       floor to 300 px so a 360 px viewport (minus page padding + gap) still
+       fits cleanly. */
+    grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
     gap: 18px;
   }
 

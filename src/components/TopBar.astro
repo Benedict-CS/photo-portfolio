@@ -63,12 +63,31 @@ const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1]
 
   /* Mobile: compress nav and hide stats / nav labels */
   @media (max-width: 720px) {
-    #topbar { padding: 6px 12px; height: 44px; }
+    #topbar { padding: 6px 10px; height: 44px; gap: 4px; }
     #topbar .brand .stats { display: none; }
-    #topbar .brand .title { font-size: 13px; }
-    #topbar nav { gap: 2px; }
-    #topbar nav a, #topbar .auth-btn { padding: 4px 8px; font-size: 12px; }
+    #topbar .brand { gap: 6px; min-width: 0; flex-shrink: 1; }
+    #topbar .brand .title {
+      font-size: 13px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    #topbar nav { gap: 2px; flex-shrink: 0; }
+    #topbar nav a, #topbar .auth-btn { padding: 4px 7px; font-size: 12px; }
     #topbar nav a .nav-label { display: none; }
+    #topbar .auth-btn .auth-label {
+      max-width: 70px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  /* Very narrow phones: drop the brand TITLE so the nav has space. The
+     logo (📸) stays as the home link affordance. */
+  @media (max-width: 420px) {
+    #topbar .brand .title { display: none; }
+    #topbar nav a, #topbar .auth-btn { padding: 4px 5px; }
   }
 </style>
 

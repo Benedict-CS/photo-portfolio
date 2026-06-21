@@ -604,13 +604,20 @@ const firstThumbs = countries.length
   }, { signal });
 
   // ---- Justified row layout ----
-  const TARGET_ROW_HEIGHT = 220;
+  // Scale row height with viewport: phones get shorter rows so each row
+  // shows ~3 thumbnails instead of getting awkwardly tall single-photo
+  // rows. 220 px is the desktop sweet spot; 150 px on a 360 px phone.
+  // Read inside layoutGrid so rotation / resize picks up the new value.
+  function getTargetRowHeight() {
+    return window.innerWidth < 520 ? 150 : 220;
+  }
   const ROW_GAP = 4;
 
   function layoutGrid(container: HTMLElement, photos: any[]) {
     container.innerHTML = '';
     const width = container.clientWidth;
     if (!width || !photos.length) return;
+    const TARGET_ROW_HEIGHT = getTargetRowHeight();
 
     const cells: { p: any; ratio: number; el: HTMLDivElement; img: HTMLImageElement }[] = [];
     photos.forEach((p) => {

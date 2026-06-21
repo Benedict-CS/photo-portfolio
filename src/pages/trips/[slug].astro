@@ -163,7 +163,10 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
     .trip-main { padding: var(--space-5) var(--space-4) var(--space-7); }
     .trip-header h1 { font-size: var(--text-2xl); }
     .trip-header .trip-flag { font-size: 32px; }
-    #trip-map { height: 220px; }
+    /* Clamp keeps the mini-map informative without monopolising the
+       viewport: never < 160 px (still readable), prefer 35dvh, cap at
+       240 px so a short trip on a tall phone doesn't look cartoonish. */
+    #trip-map { height: clamp(160px, 35dvh, 240px); }
   }
 </style>
 

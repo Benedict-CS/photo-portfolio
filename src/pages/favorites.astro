@@ -59,20 +59,28 @@ favorites.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
   .favs-main {
     flex: 1;
     overflow-y: auto;
-    padding: 32px 48px 80px;
+    padding: var(--space-6) var(--space-7) var(--space-8);
   }
-  .favs-header { margin-bottom: 24px; }
+  .favs-header { margin-bottom: var(--space-5); }
   .favs-header h1 {
-    font-size: 32px;
+    font-size: var(--text-3xl);
     font-weight: 800;
-    margin: 0 0 4px;
+    margin: 0 0 var(--space-1);
     letter-spacing: -0.02em;
+  }
+
+  @media (max-width: 720px) {
+    .favs-main { padding: var(--space-5) var(--space-4) var(--space-7); }
+    .favs-header h1 { font-size: var(--text-2xl); }
   }
   .favs-sub { color: var(--muted); margin: 0; font-size: 13px; }
 
   .favs-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    /* min() prevents the 220 px floor from forcing horizontal scroll on
+       phones — collapses to a single full-width column when the viewport
+       can't hold a 220 px card. */
+    grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr));
     gap: 12px;
   }
   .fav-card {

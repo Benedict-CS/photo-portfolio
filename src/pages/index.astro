@@ -92,7 +92,8 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     border-radius: 10px;
     padding: 10px 14px;
     box-shadow: 0 4px 18px rgba(0,0,0,0.16);
-    width: min(320px, calc(100vw - 90px));
+    /* 70 px right reserve for the toolbar pill; 28 px left edge inset. */
+    width: min(320px, calc(100vw - 56px));
     box-sizing: border-box;
     animation: ts-slide-in 0.18s ease-out;
   }

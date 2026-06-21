@@ -175,7 +175,11 @@ function flag(code: string) {
 <style is:global>
   .detail-page {
     position: relative;
+    /* 100dvh tracks the visible viewport on mobile Safari/Chrome where
+       100vh includes the retracting address bar. Fallback line for the
+       handful of older browsers without dvh support. */
     height: 100vh;
+    height: 100dvh;
     background: #0a0a0a;
     color: white;
     display: flex;
@@ -547,13 +551,16 @@ function flag(code: string) {
       padding-bottom: 2px;
     }
     .detail-page .info-bar .right::-webkit-scrollbar { display: none; }
-    /* Bigger touch targets for the action chips. */
+    /* WCAG SC 2.5.5: 44 × 44 minimum touch target. The chips were sized
+       36 px which left phone users mis-tapping the X / Download / ⭐. */
     .detail-page .loc-btn,
     .detail-page .fav-btn,
     .detail-page .download-link {
-      min-height: 36px;
-      padding: 8px 10px;
+      min-height: 44px;
+      min-width: 44px;
+      padding: 10px 12px;
       flex-shrink: 0;
+      box-sizing: border-box;
     }
     .detail-page .loc-btn span { white-space: nowrap; }
     .detail-page .info-bar .position { font-size: 11px; }
@@ -561,9 +568,9 @@ function flag(code: string) {
     /* Edit-location modal becomes a near-fullscreen sheet on mobile. */
     .loc-modal-inner {
       width: 100vw;
-      height: 100vh;
+      height: 100dvh;
       max-width: 100vw;
-      max-height: 100vh;
+      max-height: 100dvh;
       border-radius: 0;
     }
     .loc-footer { flex-wrap: wrap; gap: 8px; }
