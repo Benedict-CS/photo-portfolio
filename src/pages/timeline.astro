@@ -633,6 +633,13 @@ const firstThumbs = countries.length
     main.classList.remove('rail-collapsed');
   }
   syncToggleLabel();
+  // CRITICAL: bind the click handler with the AbortController signal.
+  // Without it every astro:page-load setup() run added another handler
+  // — so after N navigations back to /timeline, clicking the toggle
+  // fired classList.toggle N times in a row. On even N the state was
+  // identical before and after, so the sidebar appeared to never
+  // expand. With the signal, the prior setup's listeners die at
+  // cleanupTimeline() and only the current run's handler is live.
   toggle?.addEventListener('click', () => {
     if (!main) return;
     main.classList.toggle('rail-collapsed');
@@ -640,7 +647,7 @@ const firstThumbs = countries.length
     localStorage.setItem(RAIL_COLLAPSE_KEY, collapsed ? '1' : '0');
     syncToggleLabel();
     setTimeout(() => setupGrids(), 250); // re-flow after transition
-  });
+  }, { signal });
   document.addEventListener('keydown', (e) => {
     if (e.key === '`' && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
       toggle?.click();
@@ -828,13 +835,13 @@ const firstThumbs = countries.length
     // Same UI everywhere (info bar, ⭐, ← →, edit, delete, etc.).
     const cellId = cell?.dataset.id;
     if (cellId) window.location.href = `/photos/${cellId}`;
-  });
+  }, { signal });
 
   document.getElementById('batch-clear')?.addEventListener('click', () => {
     document.querySelectorAll('.justified-cell.selected').forEach((c) => c.classList.remove('selected'));
     selected.clear();
     syncBatchBar();
-  });
+  }, { signal });
 
   // Inline auth helper (same as the detail page).
   const TOKEN_KEY = 'photo-admin-token';
@@ -878,7 +885,7 @@ const firstThumbs = countries.length
         detail: { type: 'error', message: `Failed: ${err.message || err}` },
       }));
     }
-  });
+  }, { signal });
 
   // ---- Active rail highlight via IntersectionObserver ----
   const railItems = document.querySelectorAll<HTMLAnchorElement>('.rail-item');
