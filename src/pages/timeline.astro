@@ -443,7 +443,12 @@ const firstThumbs = countries.length
   .empty-state .empty-hint { font-size: 14px; line-height: 1.55; margin: 0; }
 
   @media (max-width: 720px) {
-    .timeline-main { grid-template-columns: 1fr; }
+    /* On mobile the rail collapses into a horizontal chip bar at the top.
+       The desktop `rail-collapsed` state is irrelevant here — override it
+       so the two layouts don't fight (otherwise rail items get the desktop
+       collapsed grid + the mobile chip flexbox at the same time). */
+    .timeline-main,
+    .timeline-main.rail-collapsed { grid-template-columns: 1fr; }
     .country-rail {
       border-right: none;
       border-bottom: 1px solid var(--border);
@@ -452,19 +457,33 @@ const firstThumbs = countries.length
       gap: 6px;
       overflow-x: auto;
     }
-    .rail-item {
+    .rail-item,
+    .timeline-main.rail-collapsed .rail-item {
       display: inline-flex;
       grid-template-columns: none;
+      justify-items: start;
       padding: 5px 11px;
       border: 1px solid var(--border);
-      border-left-width: 1px;
       border-radius: 999px;
       flex-shrink: 0;
+      font-weight: 500;
     }
-    .rail-item.active {
+    .rail-item.active,
+    .timeline-main.rail-collapsed .rail-item.active {
       border-color: var(--accent);
+      border-right-color: var(--accent);
       background: var(--accent-bg);
     }
+    /* In the chip layout we want the flag + name visible, not the country
+       code that the desktop collapsed view shows. */
+    .timeline-main.rail-collapsed .rail-flag,
+    .timeline-main.rail-collapsed .rail-name { display: inline; }
+    .timeline-main.rail-collapsed .rail-code,
+    .timeline-main.rail-collapsed .rail-count { display: none; }
+
+    /* Toggle button is meaningless when the rail is a horizontal chip bar. */
+    #rail-toggle { display: none; }
+
     .timeline-feed { padding: 24px 16px 80px; }
     .hero-flag { font-size: 40px; }
     .hero-name { font-size: 28px; }
