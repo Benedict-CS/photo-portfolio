@@ -79,17 +79,16 @@ const firstThumbs = countries.length
         expand it once they decide they want country navigation, and the
         choice persists in localStorage. */}
     <main class="timeline-main rail-collapsed">
+      {/* Toggle stays a sibling of .country-rail (not a child) so its
+          absolute positioning on desktop can extend past the rail's
+          right edge without being clipped by the rail's overflow-y: auto.
+          On mobile the timeline-main becomes a 2-column grid: rail wraps
+          on the left, toggle lives in a dedicated right column. */}
+      <button id="rail-toggle" type="button" aria-label="Toggle country rail" title="Show countries (`)">
+        <svg class="rail-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
+        <span class="rail-toggle-label">Show countries</span>
+      </button>
       <aside class="country-rail" aria-label="Country navigation">
-        {/* Toggle lives INSIDE the rail (was a sibling before, which made
-            CSS `order: 999` a no-op on mobile because it wasn't part of
-            the same flex container as the chips). It still positions
-            absolutely on desktop via its existing rules — the position
-            lookup walks up to .timeline-main regardless of where it sits
-            in the DOM. */}
-        <button id="rail-toggle" type="button" aria-label="Toggle country rail" title="Show countries (`)">
-          <svg class="rail-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
-          <span class="rail-toggle-label">Show countries</span>
-        </button>
         {countries.map((c) => (
           <a class="rail-item" href={`#${sectionId(c.country)}`} data-country={c.country} title={c.country}>
             <span class="rail-flag">{flagEmoji(c.countryCode)}</span>
@@ -468,44 +467,49 @@ const firstThumbs = countries.length
        gets repositioned to the right edge of the strip so it stays
        discoverable. */
 
+    /* Mobile layout: 2-column grid for the top row.
+         col 1 = the wrapping chip rail
+         col 2 = the toggle pill (auto-sized)
+       Row 2 = the timeline feed, spanning both columns.
+       This guarantees the toggle has its own column and can never be
+       clipped by overflow on the rail. */
     .timeline-main,
     .timeline-main.rail-collapsed {
-      grid-template-columns: 1fr;
+      grid-template-columns: 1fr auto;
       grid-template-rows: auto 1fr;
     }
 
-    /* Country rail on mobile: chips WRAP onto multiple lines instead of
-       horizontal scroll. Earlier design used overflow-x: auto, but on
-       desktop-portrait windows the mouse wheel scrolls vertically by
-       default so users had no way to reach the chips beyond the visible
-       width. flex-wrap removes that problem entirely — every chip is
-       reachable without scrolling sideways. */
     .country-rail {
-      position: relative;
+      grid-column: 1 / 2;
+      grid-row: 1;
       border-right: none;
       border-bottom: 1px solid var(--border);
-      padding: 8px 12px;
+      padding: 8px 8px 8px 12px;
       display: flex;
       flex-wrap: wrap;
       gap: 6px;
       overflow: visible;
       background: var(--panel);
       align-items: center;
+      min-width: 0;
     }
 
-    /* Toggle is now an inline chip that lives at the END of the rail
-       (CSS `order: 999` pushes it past all .rail-item siblings in flex
-       order). It scrolls *with* the chips on a tall rail, so it can never
-       cover a country — and there's no longer a fixed pill obscuring the
-       trailing items. */
+    /* Toggle pill — explicitly placed in column 2 of the grid. position
+       reset from absolute (desktop) to static (grid-managed). align-self
+       keeps it pinned to the top of the row even when the rail wraps to
+       2-3 lines. */
     #rail-toggle,
     .timeline-main.rail-collapsed #rail-toggle {
+      grid-column: 2 / 3;
+      grid-row: 1;
+      align-self: start;
+      justify-self: end;
       position: static;
-      order: 999;
+      margin: 8px 10px 8px 0;
       width: auto;
-      height: 30px;
-      padding: 0 12px;
-      gap: 5px;
+      height: 32px;
+      padding: 0 14px;
+      gap: 6px;
       background: var(--accent);
       color: white;
       border: 1px solid var(--accent);
@@ -519,6 +523,13 @@ const firstThumbs = countries.length
       align-items: center;
       cursor: pointer;
       transition: background 0.15s;
+      white-space: nowrap;
+      z-index: 50;
+    }
+
+    .timeline-feed {
+      grid-column: 1 / -1;
+      grid-row: 2;
     }
     #rail-toggle:hover,
     .timeline-main.rail-collapsed #rail-toggle:hover {
