@@ -79,11 +79,17 @@ const firstThumbs = countries.length
         expand it once they decide they want country navigation, and the
         choice persists in localStorage. */}
     <main class="timeline-main rail-collapsed">
-      <button id="rail-toggle" type="button" aria-label="Toggle country rail" title="Show countries (`)">
-        <svg class="rail-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
-        <span class="rail-toggle-label" hidden>Show countries</span>
-      </button>
       <aside class="country-rail" aria-label="Country navigation">
+        {/* Toggle lives INSIDE the rail (was a sibling before, which made
+            CSS `order: 999` a no-op on mobile because it wasn't part of
+            the same flex container as the chips). It still positions
+            absolutely on desktop via its existing rules — the position
+            lookup walks up to .timeline-main regardless of where it sits
+            in the DOM. */}
+        <button id="rail-toggle" type="button" aria-label="Toggle country rail" title="Show countries (`)">
+          <svg class="rail-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
+          <span class="rail-toggle-label">Show countries</span>
+        </button>
         {countries.map((c) => (
           <a class="rail-item" href={`#${sectionId(c.country)}`} data-country={c.country} title={c.country}>
             <span class="rail-flag">{flagEmoji(c.countryCode)}</span>
@@ -190,8 +196,17 @@ const firstThumbs = countries.length
     border-right: 1px solid var(--border);
     padding: 24px 0;
     overflow-y: auto;
+    /* Be explicit: vertical scroll only, never clip horizontally — the
+       absolutely positioned toggle button sticks out the right edge when
+       the rail is in collapsed mode. */
+    overflow-x: visible;
     background: var(--panel);
   }
+
+  /* Toggle text label: hidden on desktop (icon alone is fine inside the
+     compact 26 × 26 px button), shown on mobile (label gets restored by
+     the @media block further down). */
+  .rail-toggle-label { display: none; }
   .rail-item {
     display: grid;
     grid-template-columns: 28px 1fr auto;
