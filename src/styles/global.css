@@ -141,7 +141,12 @@ a:hover { text-decoration: underline; }
 .app-shell {
   display: flex;
   flex-direction: column;
+  /* 100vh on mobile Safari/Chrome includes the chrome (address bar), so
+     when that chrome hides on scroll, the layout pushes content off-screen
+     and the TopBar can scroll out of view. 100dvh tracks the *visible*
+     viewport — falls back gracefully on older browsers. */
   height: 100vh;
+  height: 100dvh;
 }
 
 /* ---- Top bar ---- */
@@ -154,6 +159,11 @@ a:hover { text-decoration: underline; }
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   height: 48px;
+  /* position: sticky so the bar stays glued to the top even if a sibling
+     element (preview panel, modal, mobile keyboard) tries to push it. */
+  position: sticky;
+  top: 0;
+  z-index: 100;
 }
 #topbar .brand {
   display: flex;
@@ -414,6 +424,46 @@ a:hover { text-decoration: underline; }
   border-radius: 999px;
   font-size: 12px;
   backdrop-filter: blur(6px);
+}
+
+/* ---- Preview panel: mobile redesign ----
+   On narrow viewports the desktop "slide in from the right" pattern eats
+   nearly the whole screen and disorients the user (especially the no-
+   visible-TopBar complaint). Switch to a bottom sheet on mobile: slide
+   up from the bottom edge, cap height at 70 dvh so the TopBar stays
+   visible above. */
+@media (max-width: 720px) {
+  #preview {
+    top: auto;
+    right: 0;
+    left: 0;
+    bottom: 0;
+    width: 100%;
+    border-radius: 14px 14px 0 0;
+    transform: translateY(100%);
+    transition: transform 0.28s cubic-bezier(0.2, 0.9, 0.3, 1), opacity 0.2s;
+    background: #111;
+    padding: 0;
+    line-height: 0;
+    box-shadow: 0 -8px 30px rgba(0,0,0,0.45);
+  }
+  #preview.show {
+    transform: translateY(0);
+  }
+  #preview .hero {
+    width: 100%;
+    height: auto;
+    max-width: 100vw;
+    max-height: 70dvh;
+    object-fit: contain;
+    border-radius: 14px 14px 0 0;
+    margin: 0;
+  }
+  /* Action buttons stay inside the panel; bump close to top-right corner. */
+  #preview .close { top: 12px; right: 12px; }
+  #preview .download { top: 12px; left: 12px; }
+  #preview .edit { top: 12px; left: 56px; }
+  #preview .datetime { bottom: 14px; left: 14px; }
 }
 
 
