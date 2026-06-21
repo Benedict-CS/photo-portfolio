@@ -175,15 +175,20 @@ a:hover { text-decoration: underline; }
 #topbar .brand .logo { font-size: var(--text-xl); }
 #topbar .brand .title { font-weight: 700; font-size: var(--text-lg); letter-spacing: -0.01em; }
 #topbar .brand .stats { font-size: var(--text-xs); color: var(--muted); }
-#topbar nav { display: flex; gap: var(--space-1); }
+#topbar nav { display: flex; gap: var(--space-1); align-items: center; }
 #topbar nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: var(--text-md);
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-md);
   color: var(--muted);
+  line-height: 1;
 }
 #topbar nav a:hover { background: #f3f4f6; text-decoration: none; color: var(--text); }
 #topbar nav a.active { background: var(--accent-bg); color: var(--accent); font-weight: 600; }
+#topbar nav .nav-icon { line-height: 0; flex-shrink: 0; }
 
 @media (max-width: 600px) {
   #topbar .brand .stats { display: none; }

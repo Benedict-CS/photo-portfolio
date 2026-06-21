@@ -17,13 +17,16 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
       <div id="map"></div>
       <div id="map-toolbar">
         <button id="mode-markers" class="map-mode-btn active" title="Markers">
-          <span class="emoji">📍</span><span class="label">Markers</span>
+          <svg class="emoji" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><path d="M20 10c0 7-8 13-8 13s-8-6-8-13a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          <span class="label">Markers</span>
         </button>
         <button id="mode-routes" class="map-mode-btn" title="Trip routes (same country + ≤7 day gap)">
-          <span class="emoji">⚡</span><span class="label">Trips</span>
+          <svg class="emoji" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+          <span class="label">Trips</span>
         </button>
         <button id="ts-toggle" class="map-mode-btn" type="button" title="Time slider">
-          <span class="emoji">🕐</span><span class="label">Time</span>
+          <svg class="emoji" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="label">Time</span>
         </button>
       </div>
       <div id="time-slider" hidden>
@@ -70,7 +73,7 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     gap: 6px;
     font-family: inherit;
   }
-  .map-mode-btn .emoji { font-size: 16px; line-height: 1; }
+  .map-mode-btn .emoji { line-height: 0; flex-shrink: 0; }
   .map-mode-btn .label { font-weight: 500; }
   .map-mode-btn:hover { background: #f3f4f6; }
   .map-mode-btn.active { background: var(--accent); color: white; }
@@ -113,9 +116,84 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     font-weight: 600;
     color: var(--accent);
   }
+  /* ---- Custom range slider (iOS / Spotify style) ----
+     Strips the native UA chrome and rebuilds the track + thumb. The
+     filled portion is drawn via a gradient that updates as the user
+     drags (see the input handler that sets --val). Mirrors the same
+     style across webkit (Chrome/Edge/Safari) and Mozilla. */
   #time-slider input[type="range"] {
+    --val: 100;             /* JS keeps this in sync with the slider value */
     width: 100%;
-    accent-color: var(--accent);
+    height: 22px;           /* hit area, the visible track is thinner */
+    background: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+    margin: 0;
+    padding: 0;
+  }
+  /* WebKit track */
+  #time-slider input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--accent) 0%,
+      var(--accent) calc(var(--val) * 1%),
+      #e5e5e5 calc(var(--val) * 1%),
+      #e5e5e5 100%
+    );
+  }
+  /* WebKit thumb */
+  #time-slider input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: white;
+    border: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+    cursor: grab;
+    margin-top: -7px;       /* (4 - 18) / 2 to vertically centre on the track */
+    transition: transform 0.12s ease;
+  }
+  #time-slider input[type="range"]:active::-webkit-slider-thumb {
+    transform: scale(1.12);
+    cursor: grabbing;
+  }
+  /* Firefox track */
+  #time-slider input[type="range"]::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: #e5e5e5;
+  }
+  #time-slider input[type="range"]::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--accent);
+  }
+  /* Firefox thumb */
+  #time-slider input[type="range"]::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: white;
+    border: none;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25), 0 0 0 0.5px rgba(0, 0, 0, 0.05);
+    cursor: grab;
+    transition: transform 0.12s ease;
+  }
+  #time-slider input[type="range"]:active::-moz-range-thumb {
+    transform: scale(1.12);
+    cursor: grabbing;
+  }
+  /* Focus ring lives on the slider itself (the track + thumb pseudo-
+     elements can't receive their own focus-visible). */
+  #time-slider input[type="range"]:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 4px;
+    border-radius: 4px;
   }
 
   /* Trip route polyline */
@@ -258,7 +336,13 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     });
     m.on('click', (e) => {
       L.DomEvent.stopPropagation(e);
-      window.dispatchEvent(new CustomEvent('preview:open', { detail: { photo: p } }));
+      // Pass the entire photo set + current index so the preview's
+      // prev/next arrows can step through every other marker without
+      // requiring a fresh map click.
+      const index = photos.indexOf(p);
+      window.dispatchEvent(new CustomEvent('preview:open', {
+        detail: { photo: p, photos, index },
+      }));
     });
     return m;
   }
@@ -345,10 +429,18 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     if (!p.datetime) return false;
     return p.datetime.slice(0, 10) <= dateAtSliderValue(timeFilter);
   }
+  function paintRange() {
+    if (!tsRange) return;
+    // Sync the CSS variable used by the WebKit track gradient so the
+    // filled portion always matches the thumb position.
+    tsRange.style.setProperty('--val', tsRange.value);
+  }
+  paintRange();
   tsRange?.addEventListener('input', () => {
     timeFilter = parseInt(tsRange.value, 10);
     const cutoff = dateAtSliderValue(timeFilter);
     if (tsActive) tsActive.textContent = timeFilter >= 100 ? 'All time' : `≤ ${cutoff}`;
+    paintRange();
     rerender();
   });
 

@@ -2,6 +2,7 @@
 export const prerender = false;
 import Layout from '~/layouts/Layout.astro';
 import TopBar from '~/components/TopBar.astro';
+import PreviewPanel from '~/components/PreviewPanel.astro';
 import { getPhotos, type PhotoView as Photo } from '~/lib/photos';
 
 const photos = await getPhotos();
@@ -100,8 +101,15 @@ const firstThumbs = countries.length
       </aside>
 
       <div class="timeline-feed">
-        <div class="select-hint edit-only">
-          Bulk-favorite: <kbd>Ctrl/Cmd</kbd>+click for multi, <kbd>Shift</kbd>+click for range, then ⭐ at the bottom.
+        <div class="feed-toolbar edit-only">
+          <button id="select-mode-toggle" type="button" class="toolbar-btn" aria-pressed="false" title="Toggle select mode">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+              <polyline points="9 11 12 14 22 4"/>
+              <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+            </svg>
+            <span class="select-mode-label">Select photos</span>
+          </button>
+          <span class="select-mode-hint">Tap photos to favorite many at once.</span>
         </div>
         {countries.length === 0 ? (
           <div class="empty-state">
@@ -126,9 +134,7 @@ const firstThumbs = countries.length
                     data-photos={JSON.stringify(m.photos.map((p) => ({
                       id: p.id,
                       path: p.path,
-                      thumb_s: p.thumbs.s,
-                      thumb_m: p.thumbs.m,
-                      thumb_l: p.thumbs.l,
+                      thumbs: { s: p.thumbs.s, m: p.thumbs.m, l: p.thumbs.l },
                       placeholder: p.placeholder,
                       datetime: p.datetime,
                       editable: p.editable,
@@ -136,6 +142,10 @@ const firstThumbs = countries.length
                       countryCode: p.countryCode,
                       camera: p.camera,
                       favorite: p.favorite,
+                      album: p.album,
+                      file: p.file,
+                      originalUrl: p.originalUrl,
+                      path: p.path,
                     })))}
                   ></div>
                 </div>
@@ -147,10 +157,16 @@ const firstThumbs = countries.length
     </main>
     <div id="batch-bar" class="edit-only">
       <span class="count">0 selected</span>
-      <button id="batch-favorite" type="button">⭐ Add to favorites</button>
+      <button id="batch-favorite" type="button">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+        </svg>
+        Add to favorites
+      </button>
       <button id="batch-clear" type="button">Clear</button>
     </div>
   </div>
+  <PreviewPanel />
 </Layout>
 
 <style is:global>
@@ -326,30 +342,41 @@ const firstThumbs = countries.length
   /* "Unknown date" gets visually demoted so it doesn't read like a real month. */
   .month-block[data-ym="unknown"] .month-label { font-style: italic; opacity: 0.7; }
 
-  .justified-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+  /* Pure CSS Grid — no JS reflow needed. auto-fill + minmax adapts to
+     any viewport; gap unifies horizontal + vertical spacing. */
+  .justified-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
   .justified-cell {
     position: relative;
     overflow: hidden;
-    border-radius: 2px;
+    border-radius: 6px;
     background: #e5e5e5;
     cursor: pointer;
-    flex-shrink: 0;
-    transition: transform 0.18s;
+    aspect-ratio: 1;
+    box-shadow: var(--shadow-sm);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
   }
-  .justified-cell:hover { transform: translateY(-2px); }
+  .justified-cell:hover {
+    transform: scale(1.02);
+    box-shadow: var(--shadow-md);
+    z-index: 1;
+  }
   .justified-cell img {
     width: 100%;
     height: 100%;
     object-fit: cover;
     display: block;
-    transition: transform 0.4s;
+    transition: transform 0.4s var(--ease-out);
   }
   .justified-cell:hover img { transform: scale(1.04); }
   .justified-cell .date-tag {
     position: absolute;
     bottom: 6px;
     right: 6px;
-    background: rgba(0, 0, 0, 0.6);
+    background: rgba(0, 0, 0, 0.65);
     color: white;
     font-size: 10px;
     padding: 2px 6px;
@@ -361,27 +388,84 @@ const firstThumbs = countries.length
   }
   .justified-cell:hover .date-tag { opacity: 1; }
 
-  /* Selection mode */
+  /* ---- Select Mode ---- */
+  .feed-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .toolbar-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 7px 14px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    color: var(--text);
+    border-radius: 999px;
+    font-size: var(--text-md);
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .toolbar-btn:hover {
+    background: var(--accent-bg);
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+  .toolbar-btn[aria-pressed="true"] {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  .select-mode-hint {
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
+  /* When select-mode is active, every cell announces it's tappable for
+     selection via a checkbox overlay in the top-left corner. */
+  .timeline-feed.select-mode .justified-cell {
+    cursor: pointer;
+  }
+  .timeline-feed.select-mode .justified-cell::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.92);
+    border: 2px solid white;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+    z-index: 2;
+    transition: background 0.15s;
+  }
+  .timeline-feed.select-mode .justified-cell:hover { transform: none; }
   .justified-cell.selected {
     outline: 3px solid var(--accent);
     outline-offset: -3px;
     transform: scale(0.96);
   }
+  .justified-cell.selected::before {
+    background: var(--accent) !important;
+    border-color: var(--accent) !important;
+  }
   .justified-cell.selected::after {
-    content: '✓';
+    content: '';
     position: absolute;
-    top: 8px;
-    left: 8px;
-    width: 24px;
-    height: 24px;
-    background: var(--accent);
-    color: white;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.4);
+    top: 12px;
+    left: 12px;
+    width: 14px;
+    height: 14px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='20 6 9 17 4 12'/%3E%3C/svg%3E");
+    background-size: contain;
+    z-index: 3;
+    pointer-events: none;
   }
 
   /* Bottom batch-action bar */
@@ -649,7 +733,7 @@ const firstThumbs = countries.length
     const collapsed = main.classList.contains('rail-collapsed');
     localStorage.setItem(RAIL_COLLAPSE_KEY, collapsed ? '1' : '0');
     syncToggleLabel();
-    setTimeout(() => setupGrids(), 250); // re-flow after transition
+    // CSS Grid handles layout — no re-flow needed.
   }, { signal });
   document.addEventListener('keydown', (e) => {
     if (e.key === '`' && (e.target as HTMLElement).tagName !== 'INPUT' && (e.target as HTMLElement).tagName !== 'TEXTAREA') {
@@ -657,138 +741,92 @@ const firstThumbs = countries.length
     }
   }, { signal });
 
-  // ---- Justified row layout ----
-  // Scale row height with viewport: phones get shorter rows so each row
-  // shows ~3 thumbnails instead of getting awkwardly tall single-photo
-  // rows. 220 px is the desktop sweet spot; 150 px on a 360 px phone.
-  // Read inside layoutGrid so rotation / resize picks up the new value.
-  function getTargetRowHeight() {
-    return window.innerWidth < 520 ? 150 : 220;
-  }
-  const ROW_GAP = 4;
-
-  function layoutGrid(container: HTMLElement, photos: any[]) {
-    container.innerHTML = '';
-    const width = container.clientWidth;
-    if (!width || !photos.length) return;
-    const TARGET_ROW_HEIGHT = getTargetRowHeight();
-
-    const cells: { p: any; ratio: number; el: HTMLDivElement; img: HTMLImageElement }[] = [];
+  // ---- Pure-CSS-grid layout (no JS reflow) ----
+  // Build each cell as a regular DOM node. The CSS `grid-template-columns:
+  // repeat(auto-fill, minmax(150px, 1fr))` + `aspect-ratio: 1` on the
+  // cell handles every viewport / rotation automatically. Photo data is
+  // attached to the cell via `_photo` so click handlers can dispatch
+  // preview:open with the full record (preview consumer expects the
+  // same shape as the map page).
+  function buildGrid(container: HTMLElement, photos: any[]) {
+    if (container.dataset.built === '1') return; // idempotent
+    container.dataset.built = '1';
+    const frag = document.createDocumentFragment();
     photos.forEach((p) => {
       const cell = document.createElement('div');
       cell.className = 'justified-cell lqip';
       cell.dataset.id = p.id;
+      cell.dataset.path = p.path || '';
+      cell.dataset.editable = p.editable ? '1' : '0';
       if (p.placeholder) cell.style.backgroundImage = `url("${p.placeholder}")`;
       const img = document.createElement('img');
       img.loading = 'lazy';
-      // decoding=async lets the browser decode off the main thread so a
-      // scroll-burst of newly-revealed thumbs doesn't stall paints.
       img.decoding = 'async';
-      // Progressive: load the tiny 200px (square crop) first — usually arrives
-      // in one TCP packet — then upgrade to the 400px once it's in cache.
-      img.src = p.thumb_s;
+      img.src = p.thumbs?.s ?? '';
       img.alt = '';
-      img.dataset.large = p.thumb_l;
-      img.dataset.medium = p.thumb_m;
-      img.dataset.datetime = p.datetime || '';
       img.addEventListener('load', function once() {
         img.classList.add('loaded');
         img.removeEventListener('load', once);
-        // Upgrade to medium quality after the small one is visible.
-        if (img.src !== img.dataset.medium) {
+        const medium = p.thumbs?.m;
+        if (medium && img.src !== medium) {
           const upgraded = new Image();
-          upgraded.onload = () => { img.src = img.dataset.medium; };
-          upgraded.src = img.dataset.medium;
+          upgraded.onload = () => { img.src = medium; };
+          upgraded.src = medium;
         }
       });
-      cell.dataset.path = p.path || '';
-      cell.dataset.country = p.country || '';
-      cell.dataset.countryCode = p.countryCode || '';
-      cell.dataset.camera = p.camera || '';
-      cell.dataset.favorite = p.favorite ? '1' : '0';
       const dateTag = document.createElement('div');
       dateTag.className = 'date-tag';
       dateTag.textContent = (p.datetime || '').slice(0, 10);
-      // Mark cells so lightbox / handlers know if this photo is editable.
-      cell.dataset.editable = p.editable ? '1' : '0';
       cell.append(img, dateTag);
-      container.append(cell);
-      cells.push({ p, ratio: 4 / 3, el: cell, img });
+      // Attach the full photo so preview:open can hand it to the panel.
+      (cell as any)._photo = p;
+      frag.append(cell);
     });
-
-    function reflow() {
-      let i = 0;
-      while (i < cells.length) {
-        let j = i;
-        let rowRatio = 0;
-        while (j < cells.length) {
-          rowRatio += cells[j].ratio;
-          const heightAt = (width - ROW_GAP * (j - i)) / rowRatio;
-          if (heightAt <= TARGET_ROW_HEIGHT) break;
-          j++;
-        }
-        if (j === cells.length) j--;
-        const usedRatio = cells.slice(i, j + 1).reduce((s, c) => s + c.ratio, 0);
-        const totalGap = ROW_GAP * (j - i);
-        const isLastIncomplete = j === cells.length - 1 && usedRatio < width / TARGET_ROW_HEIGHT - 0.3;
-        let h = isLastIncomplete ? TARGET_ROW_HEIGHT : (width - totalGap) / usedRatio;
-        h = Math.min(h, TARGET_ROW_HEIGHT * 1.3);
-        for (let k = i; k <= j; k++) {
-          const w = isLastIncomplete
-            ? h * cells[k].ratio
-            : (width - totalGap) * (cells[k].ratio / usedRatio);
-          cells[k].el.style.width = `${w}px`;
-          cells[k].el.style.height = `${h}px`;
-        }
-        i = j + 1;
-      }
-    }
-
-    reflow();
-    let pending = cells.length;
-    cells.forEach((c) => {
-      const done = () => {
-        if (c.img.naturalWidth) c.ratio = c.img.naturalWidth / c.img.naturalHeight;
-        if (--pending === 0) reflow();
-      };
-      if (c.img.complete) done();
-      else {
-        c.img.addEventListener('load', done, { once: true });
-        c.img.addEventListener('error', done, { once: true });
-      }
-    });
+    container.replaceChildren(frag);
   }
 
   function setupGrids() {
     document.querySelectorAll<HTMLElement>('.justified-grid').forEach((g) => {
+      // Reset the built flag so a navigation back to /timeline rebuilds.
+      g.dataset.built = '';
       const photos = JSON.parse(g.dataset.photos || '[]');
-      // layoutGrid early-returns when clientWidth is 0 (CSS not applied
-      // yet — happens on ClientRouter swap when layoutGrid runs before
-      // the new flex column has its computed width). Defer one frame
-      // so the second attempt always sees a real width.
-      if (g.clientWidth === 0) {
-        requestAnimationFrame(() => layoutGrid(g, photos));
-      } else {
-        layoutGrid(g, photos);
-      }
+      buildGrid(g, photos);
     });
   }
 
   setupGrids();
-  let resizeT;
-  window.addEventListener('resize', () => {
-    clearTimeout(resizeT);
-    resizeT = setTimeout(setupGrids, 150);
-  }, { signal });
 
   // ---- Selection / batch operations ----
-  const selected = new Set<string>();   // set of paths
+  // Select Mode is now an explicit toggle (works on touch + desktop).
+  // OFF: tapping a photo dispatches `preview:open` → bottom-sheet preview.
+  // ON: tapping a photo adds / removes it from the selection. The toolbar
+  // button announces state via aria-pressed + label flip.
+  const selected = new Set<string>();
   const batchBar = document.getElementById('batch-bar')!;
   const batchCount = batchBar.querySelector('.count') as HTMLElement;
+  const feed = document.querySelector('.timeline-feed') as HTMLElement;
+  const selectModeBtn = document.getElementById('select-mode-toggle');
+  const selectModeLabel = selectModeBtn?.querySelector('.select-mode-label') as HTMLElement | null;
+  let selectMode = false;
 
   function syncBatchBar() {
     batchCount.textContent = `${selected.size} selected`;
     batchBar.classList.toggle('show', selected.size > 0);
+  }
+
+  function setSelectMode(on: boolean) {
+    selectMode = on;
+    feed?.classList.toggle('select-mode', on);
+    if (selectModeBtn) selectModeBtn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    if (selectModeLabel) selectModeLabel.textContent = on ? 'Done' : 'Select photos';
+    if (!on) {
+      // Exit select mode → clear current selection so it doesn't linger
+      // when the user switches back to preview-on-tap.
+      selected.clear();
+      document.querySelectorAll('.justified-cell.selected')
+        .forEach((c) => c.classList.remove('selected'));
+      syncBatchBar();
+    }
   }
 
   function setSelected(cell: HTMLElement, on: boolean) {
@@ -798,46 +836,37 @@ const firstThumbs = countries.length
     else { selected.delete(p); cell.classList.remove('selected'); }
   }
 
-  let lastClickedCell = null;
+  selectModeBtn?.addEventListener('click', () => {
+    setSelectMode(!selectMode);
+  }, { signal });
 
-  document.querySelector('.timeline-feed')?.addEventListener('click', (e) => {
+  feed?.addEventListener('click', (e) => {
     const target = e.target as HTMLElement;
-    const cell = target.closest('.justified-cell');
+    const cell = target.closest<HTMLElement>('.justified-cell');
     if (!cell) return;
+    e.preventDefault();
 
-    // Cmd/Ctrl-click → toggle single selection (no lightbox)
-    if ((e as MouseEvent).metaKey || (e as MouseEvent).ctrlKey) {
-      e.preventDefault();
+    if (selectMode) {
       setSelected(cell, !cell.classList.contains('selected'));
-      lastClickedCell = cell;
-      syncBatchBar();
-      return;
-    }
-    // Shift-click → range select between lastClickedCell and this one
-    if ((e as MouseEvent).shiftKey && lastClickedCell) {
-      e.preventDefault();
-      const allCells = Array.from(document.querySelectorAll<HTMLElement>('.timeline-feed .justified-cell'));
-      const i = allCells.indexOf(lastClickedCell);
-      const j = allCells.indexOf(cell);
-      const [lo, hi] = i < j ? [i, j] : [j, i];
-      for (let k = lo; k <= hi; k++) setSelected(allCells[k], true);
       syncBatchBar();
       return;
     }
 
-    // Regular click — if anything selected, treat as "add to selection".
-    // Otherwise open the lightbox.
-    if (selected.size > 0) {
-      setSelected(cell, !cell.classList.contains('selected'));
-      lastClickedCell = cell;
-      syncBatchBar();
-      return;
-    }
-
-    // Single source of truth for "view a photo" → the detail page.
-    // Same UI everywhere (info bar, ⭐, ← →, edit, delete, etc.).
-    const cellId = cell?.dataset.id;
-    if (cellId) window.location.href = `/photos/${cellId}`;
+    // Default tap → open the floating preview (same UX as the map).
+    // We hand the panel the FULL flat photo list (across all sections)
+    // and the clicked cell's index inside it, so prev/next arrows step
+    // through every photo in chronological order, crossing month and
+    // country boundaries naturally.
+    const photo = (cell as any)._photo;
+    if (!photo) return;
+    const allCells = Array.from(
+      document.querySelectorAll<HTMLElement>('.timeline-feed .justified-cell'),
+    );
+    const photos = allCells.map((c) => (c as any)._photo).filter(Boolean);
+    const index = allCells.indexOf(cell);
+    window.dispatchEvent(new CustomEvent('preview:open', {
+      detail: { photo, photos, index },
+    }));
   }, { signal });
 
   document.getElementById('batch-clear')?.addEventListener('click', () => {
@@ -893,7 +922,7 @@ const firstThumbs = countries.length
   // ---- Active rail highlight via IntersectionObserver ----
   const railItems = document.querySelectorAll<HTMLAnchorElement>('.rail-item');
   const sections = document.querySelectorAll<HTMLElement>('.country-section');
-  const feed = document.querySelector('.timeline-feed') as HTMLElement;
+  // `feed` was declared above (select-mode wiring) — reuse it here.
   if (feed && sections.length) {
     const io = new IntersectionObserver((entries) => {
       entries.forEach((ent) => {
