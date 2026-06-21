@@ -206,9 +206,6 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   }
 </style>
 
-<script src="/lib/leaflet/leaflet.js" is:inline></script>
-<script src="/lib/leaflet/leaflet.markercluster.js" is:inline></script>
-
 <script define:vars={{ photos }}>
   // After three failed attempts at fixing this, here's the design that
   // actually survives ClientRouter:
@@ -226,6 +223,33 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   // 3. The old Leaflet instance is disposed at the top of init (not on
   //    before-swap) so the operation is atomic regardless of which event
   //    triggered it.
+  //
+  // 4. Leaflet + MarkerCluster are dynamically loaded via ensureLeaflet()
+  //    instead of inline <script src> tags. ClientRouter re-injects the
+  //    latter as programmatic <script> elements, which default to async —
+  //    so MarkerCluster could parse before Leaflet and throw "L is not
+  //    defined", permanently breaking the map. Promise-chained dynamic
+  //    loads with async=false guarantee order and de-dupe on re-visit.
+
+  function ensureLeaflet() {
+    if (window.__leafletReady) return window.__leafletReady;
+    window.__leafletReady = new Promise((resolve, reject) => {
+      function load(src) {
+        return new Promise((res, rej) => {
+          const s = document.createElement('script');
+          s.src = src;
+          s.async = false; // preserve execution order across both loads
+          s.onload = res;
+          s.onerror = () => rej(new Error('Failed to load ' + src));
+          document.head.appendChild(s);
+        });
+      }
+      load('/lib/leaflet/leaflet.js')
+        .then(() => load('/lib/leaflet/leaflet.markercluster.js'))
+        .then(resolve, reject);
+    });
+    return window.__leafletReady;
+  }
 
   function minZoomForViewport() {
     return Math.max(2, Math.ceil(Math.log2(window.innerWidth / 256)));
@@ -235,13 +259,11 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
     const mapDiv = document.getElementById('map');
     if (!mapDiv) return; // Not on / — listener fires page-wide.
 
-    // After a ClientRouter body swap, the new <script src="leaflet.js"
-    // is:inline> tags are async-fetched in the background. This inline
-    // define:vars script runs synchronously, so on the second visit we
-    // can race ahead of both leaflet.js and leaflet.markercluster.js.
-    // Poll on a short timer until both globals are ready, then retry.
+    // Kick off (or reuse) the dynamic load, then re-enter once both
+    // globals are ready. ensureLeaflet() is idempotent and the promise
+    // is cached on window so navigations away-and-back resolve instantly.
     if (!window.L || typeof window.L.markerClusterGroup !== 'function') {
-      setTimeout(initLeafletMap, 50);
+      ensureLeaflet().then(initLeafletMap, () => {});
       return;
     }
 
