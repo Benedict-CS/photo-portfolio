@@ -80,7 +80,8 @@ const firstThumbs = countries.length
         choice persists in localStorage. */}
     <main class="timeline-main rail-collapsed">
       <button id="rail-toggle" type="button" aria-label="Toggle country rail" title="Show countries (`)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
+        <svg class="rail-toggle-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14"><polyline points="15 18 9 12 15 6"/></svg>
+        <span class="rail-toggle-label" hidden>Show countries</span>
       </button>
       <aside class="country-rail" aria-label="Country navigation">
         {countries.map((c) => (
@@ -469,19 +470,41 @@ const firstThumbs = countries.length
       background: var(--panel);
     }
 
-    /* Repin the toggle button to the right edge of the chip strip. */
-    #rail-toggle {
-      top: 8px;
-      right: 10px;
-      left: auto;
-      width: 28px;
-      height: 28px;
-    }
+    /* Toggle becomes a chip-style pill at the right edge of the strip.
+       position: fixed so it can never be clipped by ancestor overflow or
+       confused by absolute-positioning context. High z-index so chips
+       can't accidentally slide on top of it. */
+    #rail-toggle,
     .timeline-main.rail-collapsed #rail-toggle {
-      left: auto;
+      position: fixed;
+      top: 54px;          /* sits just under the 48 px TopBar with a 6 px gap */
       right: 10px;
-      transform: rotate(180deg);
+      left: auto;
+      width: auto;
+      height: 32px;
+      padding: 0 12px;
+      gap: 6px;
+      background: var(--accent);
+      color: white;
+      border-color: var(--accent);
+      border-radius: 999px;
+      z-index: 1200;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      transform: none;        /* desktop rotates 180 ° — meaningless here */
+      transition: background 0.15s, transform 0.15s;
     }
+    #rail-toggle:hover,
+    .timeline-main.rail-collapsed #rail-toggle:hover {
+      background: #024fa1;
+      color: white;
+    }
+    .rail-toggle-icon { transition: transform 0.22s ease; }
+    .timeline-main.rail-collapsed .rail-toggle-icon { transform: rotate(180deg); }
+    /* Show the label so the button doesn't read as a mystery icon. */
+    .rail-toggle-label { display: inline; }
 
     /* Chip base — same shape regardless of collapsed/expanded. */
     .rail-item,
