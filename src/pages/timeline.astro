@@ -443,46 +443,91 @@ const firstThumbs = countries.length
   .empty-state .empty-hint { font-size: 14px; line-height: 1.55; margin: 0; }
 
   @media (max-width: 720px) {
-    /* On mobile the rail collapses into a horizontal chip bar at the top.
-       The desktop `rail-collapsed` state is irrelevant here — override it
-       so the two layouts don't fight (otherwise rail items get the desktop
-       collapsed grid + the mobile chip flexbox at the same time). */
+    /* ---- Mobile / portrait rail redesign ----
+       Layout flips: rail becomes a horizontal chip strip at the top of
+       the page instead of a left-side column. The desktop's `rail-collapsed`
+       state still gates the *content* of each chip — collapsed = country
+       code only ("TW"), expanded = flag + country name ("🇹🇼 Taiwan") —
+       but the layout direction is always horizontal. The toggle button
+       gets repositioned to the right edge of the strip so it stays
+       discoverable. */
+
     .timeline-main,
-    .timeline-main.rail-collapsed { grid-template-columns: 1fr; }
+    .timeline-main.rail-collapsed {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto 1fr;
+    }
+
     .country-rail {
+      position: relative;
       border-right: none;
       border-bottom: 1px solid var(--border);
-      padding: 8px 12px;
+      padding: 8px 50px 8px 12px; /* right padding leaves room for the toggle */
       display: flex;
       gap: 6px;
       overflow-x: auto;
+      background: var(--panel);
     }
+
+    /* Repin the toggle button to the right edge of the chip strip. */
+    #rail-toggle {
+      top: 8px;
+      right: 10px;
+      left: auto;
+      width: 28px;
+      height: 28px;
+    }
+    .timeline-main.rail-collapsed #rail-toggle {
+      left: auto;
+      right: 10px;
+      transform: rotate(180deg);
+    }
+
+    /* Chip base — same shape regardless of collapsed/expanded. */
     .rail-item,
     .timeline-main.rail-collapsed .rail-item {
       display: inline-flex;
+      align-items: center;
+      gap: 5px;
       grid-template-columns: none;
-      justify-items: start;
       padding: 5px 11px;
       border: 1px solid var(--border);
+      border-left-width: 1px;
+      border-right-width: 1px;
       border-radius: 999px;
       flex-shrink: 0;
+      font-size: 13px;
       font-weight: 500;
+      height: 30px;
+      box-sizing: border-box;
+      color: var(--text);
     }
     .rail-item.active,
     .timeline-main.rail-collapsed .rail-item.active {
       border-color: var(--accent);
-      border-right-color: var(--accent);
       background: var(--accent-bg);
+      color: var(--accent);
     }
-    /* In the chip layout we want the flag + name visible, not the country
-       code that the desktop collapsed view shows. */
-    .timeline-main.rail-collapsed .rail-flag,
-    .timeline-main.rail-collapsed .rail-name { display: inline; }
-    .timeline-main.rail-collapsed .rail-code,
-    .timeline-main.rail-collapsed .rail-count { display: none; }
+    .rail-item:hover { background: #f5f5f5; }
 
-    /* Toggle button is meaningless when the rail is a horizontal chip bar. */
-    #rail-toggle { display: none; }
+    /* EXPANDED chips: flag + full name (no count to keep them short). */
+    .timeline-main:not(.rail-collapsed) .rail-flag { display: inline; font-size: 16px; }
+    .timeline-main:not(.rail-collapsed) .rail-name { display: inline; }
+    .timeline-main:not(.rail-collapsed) .rail-code { display: none; }
+    .timeline-main:not(.rail-collapsed) .rail-count { display: none; }
+
+    /* COLLAPSED chips (the default): country code only — "TW" / "JP" / "DE". */
+    .timeline-main.rail-collapsed .rail-flag,
+    .timeline-main.rail-collapsed .rail-name,
+    .timeline-main.rail-collapsed .rail-count { display: none; }
+    .timeline-main.rail-collapsed .rail-code {
+      display: inline;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--text);
+    }
+    .timeline-main.rail-collapsed .rail-item.active .rail-code { color: var(--accent); }
 
     .timeline-feed { padding: 24px 16px 80px; }
     .hero-flag { font-size: 40px; }
