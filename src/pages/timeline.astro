@@ -459,42 +459,51 @@ const firstThumbs = countries.length
       grid-template-rows: auto 1fr;
     }
 
+    /* Country rail on mobile: chips WRAP onto multiple lines instead of
+       horizontal scroll. Earlier design used overflow-x: auto, but on
+       desktop-portrait windows the mouse wheel scrolls vertically by
+       default so users had no way to reach the chips beyond the visible
+       width. flex-wrap removes that problem entirely — every chip is
+       reachable without scrolling sideways. */
     .country-rail {
       position: relative;
       border-right: none;
       border-bottom: 1px solid var(--border);
-      padding: 8px 50px 8px 12px; /* right padding leaves room for the toggle */
+      padding: 8px 12px;
       display: flex;
+      flex-wrap: wrap;
       gap: 6px;
-      overflow-x: auto;
+      overflow: visible;
       background: var(--panel);
+      align-items: center;
     }
 
-    /* Toggle becomes a chip-style pill at the right edge of the strip.
-       position: fixed so it can never be clipped by ancestor overflow or
-       confused by absolute-positioning context. High z-index so chips
-       can't accidentally slide on top of it. */
+    /* Toggle is now an inline chip that lives at the END of the rail
+       (CSS `order: 999` pushes it past all .rail-item siblings in flex
+       order). It scrolls *with* the chips on a tall rail, so it can never
+       cover a country — and there's no longer a fixed pill obscuring the
+       trailing items. */
     #rail-toggle,
     .timeline-main.rail-collapsed #rail-toggle {
-      position: fixed;
-      top: 54px;          /* sits just under the 48 px TopBar with a 6 px gap */
-      right: 10px;
-      left: auto;
+      position: static;
+      order: 999;
       width: auto;
-      height: 32px;
+      height: 30px;
       padding: 0 12px;
-      gap: 6px;
+      gap: 5px;
       background: var(--accent);
       color: white;
-      border-color: var(--accent);
+      border: 1px solid var(--accent);
       border-radius: 999px;
-      z-index: 1200;
-      box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      box-shadow: none;
       font-family: inherit;
       font-size: 12px;
       font-weight: 600;
-      transform: none;        /* desktop rotates 180 ° — meaningless here */
-      transition: background 0.15s, transform 0.15s;
+      transform: none;
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      transition: background 0.15s;
     }
     #rail-toggle:hover,
     .timeline-main.rail-collapsed #rail-toggle:hover {
@@ -503,7 +512,8 @@ const firstThumbs = countries.length
     }
     .rail-toggle-icon { transition: transform 0.22s ease; }
     .timeline-main.rail-collapsed .rail-toggle-icon { transform: rotate(180deg); }
-    /* Show the label so the button doesn't read as a mystery icon. */
+    /* Label visible — the icon alone isn't self-explanatory. Text adapts
+       to state via the JS that toggles `rail-collapsed`. */
     .rail-toggle-label { display: inline; }
 
     /* Chip base — same shape regardless of collapsed/expanded. */
@@ -587,14 +597,22 @@ const firstThumbs = countries.length
   const RAIL_COLLAPSE_KEY = 'timeline-rail-collapsed';
   const main = document.querySelector('.timeline-main') as HTMLElement;
   const toggle = document.getElementById('rail-toggle');
+  const toggleLabel = toggle?.querySelector('.rail-toggle-label') as HTMLElement | null;
+  function syncToggleLabel() {
+    if (!toggleLabel || !main) return;
+    const collapsed = main.classList.contains('rail-collapsed');
+    toggleLabel.textContent = collapsed ? 'Show countries' : 'Hide names';
+  }
   if (main && localStorage.getItem(RAIL_COLLAPSE_KEY) === '0') {
     main.classList.remove('rail-collapsed');
   }
+  syncToggleLabel();
   toggle?.addEventListener('click', () => {
     if (!main) return;
     main.classList.toggle('rail-collapsed');
     const collapsed = main.classList.contains('rail-collapsed');
     localStorage.setItem(RAIL_COLLAPSE_KEY, collapsed ? '1' : '0');
+    syncToggleLabel();
     setTimeout(() => setupGrids(), 250); // re-flow after transition
   });
   document.addEventListener('keydown', (e) => {
