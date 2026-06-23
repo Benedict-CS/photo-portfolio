@@ -85,6 +85,24 @@ const totalNeedsAction = buckets[0].photos.length;
         <div class="stat"><span class="lbl">Date range</span><span class="num small">{oldest}<br>{newest}</span></div>
       </section>
 
+      <section class="organize-card edit-only" id="organize-card">
+        <header>
+          <div>
+            <h2>📂 Organise on Nextcloud</h2>
+            <p>
+              Move files into <code>&lt;country&gt;/&lt;YYYY-MM-DD&gt;/</code> folders that
+              match their metadata. Preview the plan before executing.
+            </p>
+          </div>
+          <div class="organize-actions">
+            <button class="btn-link" id="organize-preview">Preview plan</button>
+            <button class="btn-link danger" id="organize-execute" disabled>Execute…</button>
+          </div>
+        </header>
+        <div id="organize-plan" hidden></div>
+        <div id="organize-result" hidden></div>
+      </section>
+
       <div class="bucket-grid">
         {buckets.map((b) => (
           <section class="bucket" data-key={b.key} style={`--bucket-color: ${b.color}`}>
@@ -171,6 +189,85 @@ const totalNeedsAction = buckets[0].photos.length;
     font-size: 12px;
     font-weight: 500;
     line-height: 1.3;
+  }
+
+  .organize-card {
+    background: var(--panel);
+    border-radius: 10px;
+    padding: 18px;
+    border-left: 4px solid #9333ea;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    margin-bottom: 18px;
+  }
+  .organize-card > header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 14px;
+    flex-wrap: wrap;
+  }
+  .organize-card h2 { font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+  .organize-card p { font-size: 12px; color: var(--muted); margin: 0; max-width: 56ch; }
+  .organize-card code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #f3f4f6;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 11px;
+  }
+  .organize-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .organize-actions .btn-link {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  .organize-actions .btn-link:not(:disabled):hover { background: #f3f4f6; }
+  .organize-actions .btn-link:disabled { opacity: 0.45; cursor: not-allowed; }
+  .organize-actions .btn-link.danger { color: #c93636; border-color: #f0c0c0; }
+  .organize-actions .btn-link.danger:not(:disabled):hover { background: #fdf0f0; }
+  #organize-plan, #organize-result {
+    margin-top: 14px;
+    font-size: 12px;
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px 14px;
+    background: var(--bg);
+  }
+  #organize-plan .country-group { margin-bottom: 10px; }
+  #organize-plan .country-group:last-child { margin-bottom: 0; }
+  #organize-plan .country-label { font-weight: 600; margin-bottom: 4px; }
+  #organize-plan .move-row {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: var(--muted);
+    padding-left: 12px;
+    word-break: break-all;
+  }
+  #organize-plan .move-row .arrow { color: var(--text); padding: 0 4px; }
+  #organize-plan .empty {
+    color: #1a8a3a;
+    text-align: center;
+    padding: 8px 0;
+  }
+  #organize-result .summary { font-weight: 600; margin-bottom: 6px; }
+  #organize-result .summary.ok { color: #1a8a3a; }
+  #organize-result .summary.fail { color: #c93636; }
+  #organize-result .err-row {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px;
+    color: #c93636;
+    word-break: break-all;
   }
 
   .bucket-grid {
@@ -327,6 +424,105 @@ const totalNeedsAction = buckets[0].photos.length;
         cb.closest('.thumb-cell')?.classList.remove('selected');
       });
     });
+  });
+
+  // -------- Organise on Nextcloud --------
+  const previewBtn = document.getElementById('organize-preview');
+  const executeBtn = document.getElementById('organize-execute');
+  const planBox = document.getElementById('organize-plan');
+  const resultBox = document.getElementById('organize-result');
+  let lastPlanSize = 0;
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) =>
+      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])
+    );
+  }
+
+  function renderPlan(data) {
+    if (!planBox) return;
+    planBox.hidden = false;
+    if (resultBox) resultBox.hidden = true;
+    if (!data.plan.length) {
+      planBox.innerHTML = `<div class="empty">✓ Already organised — nothing to move (${data.total} photo${data.total === 1 ? '' : 's'} total)</div>`;
+      lastPlanSize = 0;
+      if (executeBtn) executeBtn.disabled = true;
+      return;
+    }
+    const byCountry = new Map();
+    for (const m of data.plan) {
+      if (!byCountry.has(m.country)) byCountry.set(m.country, []);
+      byCountry.get(m.country).push(m);
+    }
+    const groups = [...byCountry.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    const html = [
+      `<div class="summary">${data.plan.length} move${data.plan.length === 1 ? '' : 's'} (out of ${data.total} photo${data.total === 1 ? '' : 's'})</div>`,
+      ...groups.map(([country, moves]) =>
+        `<div class="country-group">` +
+          `<div class="country-label">📁 ${escapeHtml(country)}/ <span style="color:var(--muted);font-weight:400;">(${moves.length})</span></div>` +
+          moves.map((m) =>
+            `<div class="move-row">${escapeHtml(m.src)}<span class="arrow">→</span>${escapeHtml(m.dst)}</div>`
+          ).join('') +
+        `</div>`
+      ),
+    ].join('');
+    planBox.innerHTML = html;
+    lastPlanSize = data.plan.length;
+    if (executeBtn) executeBtn.disabled = false;
+  }
+
+  function renderResult(data) {
+    if (!resultBox) return;
+    resultBox.hidden = false;
+    const summaryClass = data.failed > 0 ? 'fail' : 'ok';
+    const lines = [
+      `<div class="summary ${summaryClass}">${data.moved} moved · ${data.failed} failed (of ${data.total})</div>`,
+    ];
+    if (data.errors && data.errors.length) {
+      for (const e of data.errors) {
+        lines.push(`<div class="err-row">✗ ${escapeHtml(e.src)}: ${escapeHtml(e.error)}</div>`);
+      }
+    }
+    resultBox.innerHTML = lines.join('');
+  }
+
+  previewBtn?.addEventListener('click', async () => {
+    previewBtn.disabled = true;
+    try {
+      const res = await authedFetch('/api/organize', { method: 'GET' });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'preview failed');
+      renderPlan(data);
+    } catch (err) {
+      toast('error', `Failed: ${err.message || err}`);
+    } finally {
+      previewBtn.disabled = false;
+    }
+  });
+
+  executeBtn?.addEventListener('click', async () => {
+    if (lastPlanSize === 0) { toast('info', 'Preview the plan first'); return; }
+    if (!confirm(`Move ${lastPlanSize} file${lastPlanSize === 1 ? '' : 's'} on Nextcloud and update the DB?\nMake sure you have a recent backup.`)) return;
+    executeBtn.disabled = true;
+    if (previewBtn) previewBtn.disabled = true;
+    try {
+      const res = await authedFetch('/api/organize', { method: 'POST' });
+      const data = await res.json();
+      if (data.ok === undefined) throw new Error(data.error || 'execute failed');
+      renderResult(data);
+      if (data.failed === 0) {
+        toast('success', `Moved ${data.moved}`);
+        // Re-preview so the (now empty) plan reflects the new state
+        setTimeout(() => previewBtn?.click(), 400);
+      } else {
+        toast('error', `${data.failed} of ${data.total} failed`);
+      }
+    } catch (err) {
+      toast('error', `Failed: ${err.message || err}`);
+    } finally {
+      executeBtn.disabled = lastPlanSize === 0;
+      if (previewBtn) previewBtn.disabled = false;
+    }
   });
 
   // Bulk delete
