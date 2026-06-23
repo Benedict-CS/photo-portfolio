@@ -22,13 +22,20 @@
  * DB row, the on-disk thumbnails, and the Nextcloud file all stay in sync.
  */
 import 'dotenv/config';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 
 const EXECUTE = process.argv.includes('--execute');
 
-// .ts is resolved by the Astro CLI's loader, and astro:db is wired up
-// the same way. Plain `node scripts/organize.mjs` will fail on both
-// counts — bail with a helpful message instead of a cryptic stack.
-const mod = await import('../src/lib/photos.ts').catch((err) => {
+// `astro db execute` bundles this script to /app/db.timestamp-*.mjs and
+// runs it from there, which breaks the relative `../src/lib/photos.ts`
+// import (it resolves against the bundled file's location, not the
+// original script). Anchor on process.cwd() instead — npm and the Astro
+// CLI both set cwd to the project root before invoking the script.
+const photosUrl = pathToFileURL(
+  path.resolve(process.cwd(), 'src/lib/photos.ts'),
+).href;
+const mod = await import(photosUrl).catch((err) => {
   console.error('Failed to load src/lib/photos.ts.');
   console.error('This script must be invoked via the Astro CLI so that');
   console.error('.ts files and astro:db resolve. Run one of:');
