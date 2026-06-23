@@ -58,7 +58,7 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
       {tripGeoPhotos.length >= 2 && (
         <div id="trip-map" data-photos={JSON.stringify(tripGeoPhotos.map((p) => ({
-          lat: p.lat, lon: p.lon, thumb: p.thumbs.s, id: p.id,
+          lat: p.lat, lon: p.lon, thumb: p.thumbs.s, id: p.id, datetime: p.datetime,
         })))}></div>
       )}
 
@@ -208,8 +208,9 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
       }).addTo(map);
 
       const latLngs = photos.map((p: any) => [p.lat, p.lon]);
+      const tripColor = '#0366d6';
       L.polyline(latLngs, {
-        color: '#0366d6',
+        color: tripColor,
         weight: 2.5,
         dashArray: '4 6',
         opacity: 0.7,
@@ -225,6 +226,31 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
         L.marker([p.lat, p.lon], { icon }).addTo(map)
           .on('click', () => { window.location.href = `/photos/${p.id}`; });
       });
+
+      // Float start/end flag badges above the photo markers. Same idea
+      // as the main /map view, but tuned for this page's 44-px photo
+      // marker (half-height 22 → 50 = 28 (badge) + 22 (photo half)).
+      const endpointIcon = (emoji: string) =>
+        L.divIcon({
+          html: `<div style="
+            width:28px;height:28px;border-radius:50%;
+            background:${tripColor};border:2px solid #fff;
+            box-shadow:0 2px 6px rgba(0,0,0,0.45);
+            display:flex;align-items:center;justify-content:center;
+            font-size:16px;line-height:1;">${emoji}</div>`,
+          className: '',
+          iconSize: [28, 28],
+          iconAnchor: [14, 50],
+        });
+      const startP = photos[0];
+      const endP = photos[photos.length - 1];
+      const dateOf = (p: any) => (p.datetime ? String(p.datetime).slice(0, 10) : '');
+      L.marker([startP.lat, startP.lon], { icon: endpointIcon('🚩'), zIndexOffset: 1500 })
+        .bindTooltip(`Start · ${dateOf(startP)}`, { direction: 'top', offset: [0, -6] })
+        .addTo(map);
+      L.marker([endP.lat, endP.lon], { icon: endpointIcon('🏁'), zIndexOffset: 1500 })
+        .bindTooltip(`End · ${dateOf(endP)}`, { direction: 'top', offset: [0, -6] })
+        .addTo(map);
 
       const bounds = L.latLngBounds(latLngs);
       map.fitBounds(bounds.pad(0.2));

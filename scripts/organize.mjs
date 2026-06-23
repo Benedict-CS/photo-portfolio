@@ -4,8 +4,12 @@
  * on what's stored in the SQLite DB (which getPhotos() populates from a
  * fresh Nextcloud sync).
  *
- *   node scripts/organize.mjs              # dry-run (prints plan)
- *   node scripts/organize.mjs --execute    # actually MOVE files
+ * Run via the Astro CLI so astro:db + .ts imports resolve:
+ *
+ *   npm run organize                       # dry-run (prints plan)
+ *   npm run organize -- --execute          # actually MOVE files
+ *
+ * (Or directly: `astro db execute scripts/organize.mjs [--execute]`.)
  *
  * Layout chosen for each photo:
  *   - has country  + has datetime  →  <country>/<YYYY-MM-DD>/<basename>
@@ -21,12 +25,19 @@ import 'dotenv/config';
 
 const EXECUTE = process.argv.includes('--execute');
 
-// We dynamically import so this file can be invoked stand-alone without
-// the Astro CLI — astro:db works once `dist/` is built (Docker case) or
-// when invoked via `astro db execute` (npm script case). Mirrors the
-// strategy used by scripts/sync.mjs.
-const mod = await import('../src/lib/photos.ts').catch(async () => {
-  return import('../dist/server/chunks/lib_photos.mjs');
+// .ts is resolved by the Astro CLI's loader, and astro:db is wired up
+// the same way. Plain `node scripts/organize.mjs` will fail on both
+// counts — bail with a helpful message instead of a cryptic stack.
+const mod = await import('../src/lib/photos.ts').catch((err) => {
+  console.error('Failed to load src/lib/photos.ts.');
+  console.error('This script must be invoked via the Astro CLI so that');
+  console.error('.ts files and astro:db resolve. Run one of:');
+  console.error('');
+  console.error('  npm run organize                 # dry-run');
+  console.error('  npm run organize -- --execute    # actually move');
+  console.error('');
+  console.error('Original error:', err?.message || err);
+  process.exit(1);
 });
 
 if (typeof mod.invalidatePhotoSync === 'function') mod.invalidatePhotoSync();
