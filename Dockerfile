@@ -38,8 +38,14 @@ RUN addgroup -g 1001 app && adduser -D -u 1001 -G app app
 # COPY lines below covers the files copied IN, but not the /app directory
 # itself — so anything that needs to write a NEW file directly under /app
 # (e.g. `astro db execute` drops a db.timestamp-*.mjs while loading its
-# config) hits EACCES. Hand the directory to app explicitly.
-RUN chown app:app /app
+# config) hits EACCES.
+#
+# At runtime docker-compose runs the container as ${PUID:-1000} (the host
+# user, not the image's `app` UID 1001) so chown'ing /app to one specific
+# UID doesn't help every invocation. Make /app world-writable with the
+# sticky bit so any user can create their own temp files there but can't
+# clobber each other's. Same approach as /tmp.
+RUN chmod 1777 /app
 
 COPY --from=builder --chown=app:app /app/node_modules ./node_modules
 COPY --from=builder --chown=app:app /app/dist ./dist
