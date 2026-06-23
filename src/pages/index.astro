@@ -366,11 +366,12 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
       // Fly to the actual marker position (not p.lat/p.lon — that loses the
       // world-copy offset for markers placed in adjacent world copies).
       // Only zoom IN, never out, so a user already zoomed deeper keeps their
-      // context. Zoom 15 ≈ neighborhood level, matches what a cluster expand
-      // typically settles on. Flag the move so the zoomstart preview-close
-      // listener doesn't immediately tear down the preview we just opened.
+      // context. Zoom 8 ≈ region / prefecture level — keeps the photo in
+      // a wide geographical context rather than dropping the user onto a
+      // single street. Flag the move so the zoomstart preview-close
+      // listener doesn't immediately tear down the just-opened preview.
       programmaticMove = true;
-      map.flyTo(m.getLatLng(), Math.max(map.getZoom(), 15), { duration: 0.6 });
+      map.flyTo(m.getLatLng(), Math.max(map.getZoom(), 8), { duration: 0.6 });
       map.once('moveend', () => { programmaticMove = false; });
       // Pass the entire photo set + current index so the preview's
       // prev/next arrows can step through every other marker without
@@ -528,28 +529,33 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
           opacity: 0.75,
           dashArray: '5 8',
         }).addTo(routeLayer);
-        // Start: filled solid dot in the trip's colour. End: hollow ring
-        // in the same colour. Gives the eye a clear "this trip began
-        // here, ended there" direction without needing an arrow plugin.
+        // Float a flag badge ABOVE each endpoint's photo marker. Has to
+        // be L.marker + divIcon (not circleMarker — that sits in
+        // overlayPane and gets fully hidden by the 52-px photo markers
+        // in markerPane). zIndexOffset bumps the badge above any nearby
+        // photo so it stays legible even when stacked.
         const startP = group[0];
         const endP = group[group.length - 1];
-        L.circleMarker(pts[0], {
-          radius: 7,
-          color: '#fff',
-          weight: 2,
-          fillColor: tripColor,
-          fillOpacity: 1,
-        })
-          .bindTooltip(`起點 · ${startP.country} · ${startP.datetime.slice(0, 10)}`, { direction: 'top', offset: [0, -6] })
+        const endpointIcon = (emoji) =>
+          L.divIcon({
+            html: `<div style="
+              width:28px;height:28px;border-radius:50%;
+              background:${tripColor};border:2px solid #fff;
+              box-shadow:0 2px 6px rgba(0,0,0,0.45);
+              display:flex;align-items:center;justify-content:center;
+              font-size:16px;line-height:1;">${emoji}</div>`,
+            className: '',
+            iconSize: [28, 28],
+            // 56 = 28 (icon height) + 28 (≈ photo marker's half-height,
+            // i.e. distance from latlng to its top edge) → badge bottom
+            // sits flush with the photo marker's top edge.
+            iconAnchor: [14, 56],
+          });
+        L.marker(pts[0], { icon: endpointIcon('🚩'), zIndexOffset: 1500 })
+          .bindTooltip(`Start · ${startP.country} · ${startP.datetime.slice(0, 10)}`, { direction: 'top', offset: [0, -6] })
           .addTo(routeLayer);
-        L.circleMarker(pts[pts.length - 1], {
-          radius: 6,
-          color: tripColor,
-          weight: 2.5,
-          fillColor: '#fff',
-          fillOpacity: 1,
-        })
-          .bindTooltip(`終點 · ${endP.datetime.slice(0, 10)}`, { direction: 'top', offset: [0, -6] })
+        L.marker(pts[pts.length - 1], { icon: endpointIcon('🏁'), zIndexOffset: 1500 })
+          .bindTooltip(`End · ${endP.datetime.slice(0, 10)}`, { direction: 'top', offset: [0, -6] })
           .addTo(routeLayer);
       }
       group = [];
