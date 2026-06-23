@@ -34,6 +34,13 @@ RUN apk add --no-cache vips tini zip unzip sqlite
 # Drop privileges
 RUN addgroup -g 1001 app && adduser -D -u 1001 -G app app
 
+# WORKDIR /app was created earlier as root. The `--chown=app:app` on the
+# COPY lines below covers the files copied IN, but not the /app directory
+# itself — so anything that needs to write a NEW file directly under /app
+# (e.g. `astro db execute` drops a db.timestamp-*.mjs while loading its
+# config) hits EACCES. Hand the directory to app explicitly.
+RUN chown app:app /app
+
 COPY --from=builder --chown=app:app /app/node_modules ./node_modules
 COPY --from=builder --chown=app:app /app/dist ./dist
 COPY --from=builder --chown=app:app /app/public ./public
