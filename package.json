@@ -8,9 +8,9 @@
     "vendor": "node scripts/copy-vendor.mjs",
     "build": "node scripts/copy-vendor.mjs && node scripts/preserve-db.mjs save && astro build && node scripts/preserve-db.mjs restore",
     "preview": "astro preview",
-    "sync": "astro db execute scripts/sync.mjs",
+    "sync": "node scripts/sync.mjs",
     "organize": "node scripts/organize.mjs",
-    "predeploy": "npm run sync && npm run build",
+    "predeploy": "npm run build",
     "backup": "node scripts/backup.mjs",
     "verify-backup": "node scripts/verify-backup.mjs"
   },

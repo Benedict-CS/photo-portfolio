@@ -1,24 +1,49 @@
 #!/usr/bin/env node
 /**
- * Build-time Nextcloud sync.
+ * Force a Nextcloud → DB sync NOW by poking the running server's
+ * /api/sync endpoint. Plain Node, no astro:db / no .ts imports — works
+ * inside the Docker container and on the host alike.
  *
- * Run before `npm run build` (or in CI) so the deployed DB already has
- * fresh photo data. Without this, the first user request after a deploy
- * pays the cold-sync penalty.
+ *   npm run sync
  *
- * Reads .env, calls syncFromNextcloud() once, exits.
+ * The previous implementation tried to import ../src/lib/photos.ts via
+ * `astro db execute`, which (a) breaks on relative paths once the script
+ * is bundled to /app/db.timestamp-*.mjs and (b) can't resolve astro:db
+ * inside the dynamically-imported .ts anyway. Hitting the running server
+ * over HTTP sidesteps both problems: the server's own astro:db is fully
+ * wired, so it just calls invalidatePhotoSync() + getPhotos() inline.
+ *
+ * Requires the app container to be up. Override URL via SYNC_URL env
+ * (default: http://localhost:4321/api/sync). If ADMIN_PASSWORD is set
+ * we forward it as a Bearer token so the endpoint accepts the call.
  */
 import 'dotenv/config';
 
-const start = Date.now();
-// We dynamically import so this file can be invoked stand-alone without
-// Astro's runtime — astro:db works in Node via the Astro CLI which sets it up.
-const mod = await import('../src/lib/photos.ts').catch(async () => {
-  // Fallback to .js (already-built) if the .ts import fails.
-  return import('../dist/server/chunks/lib_photos.mjs');
-});
+const url = process.env.SYNC_URL || 'http://localhost:4321/api/sync';
+const password = process.env.ADMIN_PASSWORD || '';
 
-if (typeof mod.invalidatePhotoSync === 'function') mod.invalidatePhotoSync();
-const photos = await mod.getPhotos();
+const start = Date.now();
+let res;
+try {
+  res = await fetch(url, {
+    method: 'POST',
+    headers: password ? { Authorization: `Bearer ${password}` } : undefined,
+  });
+} catch (err) {
+  console.error(`[sync] Failed to reach ${url}: ${err?.message || err}`);
+  console.error('Is the server running? Inside Docker:');
+  console.error('  docker compose ps');
+  console.error('  docker compose exec app sh -c "npm run sync"');
+  process.exit(1);
+}
+
+if (!res.ok) {
+  const text = await res.text().catch(() => '');
+  console.error(`[sync] ${url} returned ${res.status} ${res.statusText}`);
+  if (text) console.error(text);
+  process.exit(1);
+}
+
+const data = await res.json().catch(() => ({}));
 const dur = ((Date.now() - start) / 1000).toFixed(1);
-console.log(`[sync] ${photos.length} photos resolved in ${dur}s`);
+console.log(`[sync] ${data.count ?? '?'} photos resolved in ${dur}s`);

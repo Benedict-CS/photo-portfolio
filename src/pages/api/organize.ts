@@ -18,6 +18,8 @@
  */
 import type { APIRoute } from 'astro';
 import { timingSafeEqual } from 'node:crypto';
+import { spawn } from 'node:child_process';
+import path from 'node:path';
 import { getPhotos, renamePhotoFile, invalidatePhotoSync, type PhotoView } from '~/lib/photos';
 import { rateLimit, clientIp } from '~/lib/rate-limit';
 
@@ -124,10 +126,51 @@ export const GET: APIRoute = async ({ request }) => {
   );
 };
 
-export const POST: APIRoute = async ({ request }) => {
+/**
+ * Spawn `node scripts/backup.mjs` and resolve when it exits. Backups
+ * land in `./backups/` (bind-mounted to the host) and survive container
+ * rebuilds. Captures stderr so the API can surface failure causes to
+ * the admin UI rather than swallowing them.
+ */
+function runBackupScript(): Promise<{ ok: boolean; error?: string; output?: string }> {
+  return new Promise((resolve) => {
+    const scriptPath = path.resolve(process.cwd(), 'scripts/backup.mjs');
+    const proc = spawn('node', [scriptPath], { cwd: process.cwd(), stdio: 'pipe' });
+    let stderr = '';
+    let stdout = '';
+    proc.stdout.on('data', (d) => { stdout += d.toString(); });
+    proc.stderr.on('data', (d) => { stderr += d.toString(); });
+    proc.on('error', (err) => resolve({ ok: false, error: err?.message || String(err) }));
+    proc.on('exit', (code) => {
+      if (code === 0) resolve({ ok: true, output: stdout.trim() });
+      else resolve({ ok: false, error: (stderr || stdout || `exit ${code}`).trim() });
+    });
+  });
+}
+
+export const POST: APIRoute = async ({ request, url }) => {
   const rl = rateLimit(`organize:${clientIp(request)}`, EXEC_MAX, EXEC_WINDOW_MS);
   if (!rl.ok) return tooManyRequests(rl.resetMs);
   if (!checkAuth(request)) return unauthorized();
+
+  // Run a backup first so the user has a known-good rollback point.
+  // ?skipBackup=true lets a power user bypass (e.g. they just backed up).
+  const skipBackup = url.searchParams.get('skipBackup') === 'true';
+  let backupOutput: string | null = null;
+  if (!skipBackup) {
+    const b = await runBackupScript();
+    if (!b.ok) {
+      return new Response(
+        JSON.stringify({
+          ok: false,
+          stage: 'backup',
+          error: b.error || 'backup failed',
+        }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    backupOutput = b.output || null;
+  }
 
   const photos = await getPhotos();
   const plan = buildPlanFromPhotos(photos);
@@ -149,7 +192,14 @@ export const POST: APIRoute = async ({ request }) => {
   invalidatePhotoSync();
 
   return new Response(
-    JSON.stringify({ ok: failed === 0, total: plan.length, moved, failed, errors }),
+    JSON.stringify({
+      ok: failed === 0,
+      total: plan.length,
+      moved,
+      failed,
+      errors,
+      backup: skipBackup ? 'skipped' : backupOutput,
+    }),
     { headers: { 'Content-Type': 'application/json' } },
   );
 };

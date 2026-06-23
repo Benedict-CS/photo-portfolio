@@ -95,8 +95,9 @@ const totalNeedsAction = buckets[0].photos.length;
             </p>
           </div>
           <div class="organize-actions">
+            <button class="btn-link" id="organize-sync" title="Re-list files from Nextcloud now">↻ Sync</button>
             <button class="btn-link" id="organize-preview">Preview plan</button>
-            <button class="btn-link danger" id="organize-execute" disabled>Execute…</button>
+            <button class="btn-link danger" id="organize-execute" disabled>Execute… (with backup)</button>
           </div>
         </header>
         <div id="organize-plan" hidden></div>
@@ -427,6 +428,7 @@ const totalNeedsAction = buckets[0].photos.length;
   });
 
   // -------- Organise on Nextcloud --------
+  const syncBtn = document.getElementById('organize-sync');
   const previewBtn = document.getElementById('organize-preview');
   const executeBtn = document.getElementById('organize-execute');
   const planBox = document.getElementById('organize-plan');
@@ -478,6 +480,11 @@ const totalNeedsAction = buckets[0].photos.length;
     const lines = [
       `<div class="summary ${summaryClass}">${data.moved} moved · ${data.failed} failed (of ${data.total})</div>`,
     ];
+    if (data.backup && data.backup !== 'skipped') {
+      // backup output ends with the "✓ Backup saved: ..." line we want to surface
+      const lastLine = String(data.backup).trim().split(/\r?\n/).filter(Boolean).pop() || '';
+      if (lastLine) lines.push(`<div style="font-size:11px;color:var(--muted);margin-bottom:4px;">${escapeHtml(lastLine)}</div>`);
+    }
     if (data.errors && data.errors.length) {
       for (const e of data.errors) {
         lines.push(`<div class="err-row">✗ ${escapeHtml(e.src)}: ${escapeHtml(e.error)}</div>`);
@@ -485,6 +492,25 @@ const totalNeedsAction = buckets[0].photos.length;
     }
     resultBox.innerHTML = lines.join('');
   }
+
+  syncBtn?.addEventListener('click', async () => {
+    syncBtn.disabled = true;
+    const original = syncBtn.textContent;
+    syncBtn.textContent = '↻ Syncing…';
+    try {
+      const res = await authedFetch('/api/sync', { method: 'POST' });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'sync failed');
+      toast('success', `Synced ${data.count} (${(data.durationMs / 1000).toFixed(1)}s)`);
+      // Refresh the preview so the user sees any new/moved files
+      if (!planBox?.hidden) previewBtn?.click();
+    } catch (err) {
+      toast('error', `Sync failed: ${err.message || err}`);
+    } finally {
+      syncBtn.disabled = false;
+      syncBtn.textContent = original;
+    }
+  });
 
   previewBtn?.addEventListener('click', async () => {
     previewBtn.disabled = true;
@@ -502,16 +528,25 @@ const totalNeedsAction = buckets[0].photos.length;
 
   executeBtn?.addEventListener('click', async () => {
     if (lastPlanSize === 0) { toast('info', 'Preview the plan first'); return; }
-    if (!confirm(`Move ${lastPlanSize} file${lastPlanSize === 1 ? '' : 's'} on Nextcloud and update the DB?\nMake sure you have a recent backup.`)) return;
+    if (!confirm(`Backup first, then move ${lastPlanSize} file${lastPlanSize === 1 ? '' : 's'} on Nextcloud and update the DB?\nBackup zip lands in ./backups/ on the host.`)) return;
     executeBtn.disabled = true;
     if (previewBtn) previewBtn.disabled = true;
+    if (syncBtn) syncBtn.disabled = true;
+    const originalText = executeBtn.textContent;
+    executeBtn.textContent = 'Backing up + moving…';
+    toast('info', 'Backing up before move…');
     try {
       const res = await authedFetch('/api/organize', { method: 'POST' });
       const data = await res.json();
+      if (data.stage === 'backup') {
+        renderResult({ total: 0, moved: 0, failed: 0, errors: [{ src: 'backup', error: data.error }] });
+        toast('error', `Backup failed: ${data.error}`);
+        return;
+      }
       if (data.ok === undefined) throw new Error(data.error || 'execute failed');
       renderResult(data);
       if (data.failed === 0) {
-        toast('success', `Moved ${data.moved}`);
+        toast('success', `Backed up + moved ${data.moved}`);
         // Re-preview so the (now empty) plan reflects the new state
         setTimeout(() => previewBtn?.click(), 400);
       } else {
@@ -521,7 +556,9 @@ const totalNeedsAction = buckets[0].photos.length;
       toast('error', `Failed: ${err.message || err}`);
     } finally {
       executeBtn.disabled = lastPlanSize === 0;
+      executeBtn.textContent = originalText;
       if (previewBtn) previewBtn.disabled = false;
+      if (syncBtn) syncBtn.disabled = false;
     }
   });
 
