@@ -589,6 +589,58 @@ export async function deletePhoto(p: string): Promise<boolean> {
   return true;
 }
 
+/**
+ * Move a photo to a new path on Nextcloud and re-key everything that
+ * depends on the path: the DB row (path, file, thumbKey), and the three
+ * on-disk thumb files. Used by `scripts/organize.mjs` for bulk relocation
+ * into `<country>/<day>/` folders. Idempotent on no-op (oldPath === newPath).
+ */
+export async function renamePhotoFile(
+  oldPath: string,
+  newPath: string,
+): Promise<{ ok: boolean; error?: string }> {
+  if (oldPath === newPath) return { ok: true };
+  const rows = await db.select().from(PhotoTable).where(eq(PhotoTable.path, oldPath));
+  const existing = rows[0];
+  if (!existing) return { ok: false, error: 'no DB row for ' + oldPath };
+
+  const client = makeClient();
+  const dstDir = path.posix.dirname(newPath);
+  if (dstDir && dstDir !== '.') {
+    try {
+      await client.createDirectory('/' + dstDir, { recursive: true });
+    } catch {
+      // Nextcloud returns 405 if the directory already exists — fine to ignore.
+    }
+  }
+  try {
+    await client.moveFile('/' + oldPath, '/' + newPath);
+  } catch (err: any) {
+    return { ok: false, error: err?.message || String(err) };
+  }
+
+  const newKey = thumbKey(newPath);
+  if (existing.thumbKey !== newKey) {
+    for (const size of Object.keys(THUMB_SPECS)) {
+      const oldT = path.join(THUMBS_DIR, size, `${existing.thumbKey}.webp`);
+      const newT = path.join(THUMBS_DIR, size, `${newKey}.webp`);
+      await fs.rename(oldT, newT).catch(() => undefined);
+    }
+  }
+
+  await db
+    .update(PhotoTable)
+    .set({
+      path: newPath,
+      file: path.posix.basename(newPath),
+      thumbKey: newKey,
+      updatedAt: new Date(),
+    })
+    .where(eq(PhotoTable.path, oldPath));
+
+  return { ok: true };
+}
+
 export async function updatePhoto(
   p: string,
   patch: {
