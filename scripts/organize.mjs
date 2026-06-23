@@ -1,59 +1,46 @@
 #!/usr/bin/env node
 /**
- * Organise Nextcloud photos into country folders based on detected metadata.
+ * Organise Nextcloud photos into `<country>/<YYYY-MM-DD>/` folders based
+ * on what's stored in the SQLite DB (which getPhotos() populates from a
+ * fresh Nextcloud sync).
  *
  *   node scripts/organize.mjs              # dry-run (prints plan)
  *   node scripts/organize.mjs --execute    # actually MOVE files
  *
- * Source of truth for "what country is this photo in":
- *   .astro/photos-cache.json   ← built by getPhotos() at dev/build time
+ * Layout chosen for each photo:
+ *   - has country  + has datetime  →  <country>/<YYYY-MM-DD>/<basename>
+ *   - has country, no datetime     →  <country>/未分類日期/<basename>
+ *   - no country (Unlocated)       →  未分類/<basename>
  *
- * Action for each photo:
- *   - has country  → move to "<country>/<basename>"
- *   - no country   → move to "未分類/<basename>"
- *   - already at target → skip
- *
- * Side effects on the local repo when --execute:
- *   - metadata.json keys are rewritten old-path → new-path
- *   - photos-cache.json keys are rewritten old-path → new-path
- *   - public/thumbs/<size>/<thumbKey>.jpg files are renamed
- *   - The Vite watcher will pick up the Nextcloud change within ~30s and reload
+ * Source of truth comes from `src/lib/photos.ts → getPhotos()` (which
+ * triggers `syncFromNextcloud()` first). Each plan entry is applied via
+ * `renamePhotoFile(src, dst)` exported from that same module, so the
+ * DB row, the on-disk thumbnails, and the Nextcloud file all stay in sync.
  */
 import 'dotenv/config';
-import { createClient } from 'webdav';
-import fs from 'node:fs/promises';
-import path from 'node:path';
 
 const EXECUTE = process.argv.includes('--execute');
-const PROJECT_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\//, '')), '..');
-const CACHE_PATH = path.join(PROJECT_ROOT, '.astro', 'photos-cache.json');
-const METADATA_PATH = path.join(PROJECT_ROOT, 'metadata.json');
-const THUMBS_DIR = path.join(PROJECT_ROOT, 'public', 'thumbs');
-const THUMB_SIZES = ['s', 'm', 'l'];
 
-const UNCATEGORISED = '未分類';
+// We dynamically import so this file can be invoked stand-alone without
+// the Astro CLI — astro:db works once `dist/` is built (Docker case) or
+// when invoked via `astro db execute` (npm script case). Mirrors the
+// strategy used by scripts/sync.mjs.
+const mod = await import('../src/lib/photos.ts').catch(async () => {
+  return import('../dist/server/chunks/lib_photos.mjs');
+});
 
-const url = process.env.NEXTCLOUD_URL?.replace(/\/+$/, '');
-const token = process.env.NEXTCLOUD_SHARE_TOKEN;
-if (!url || !token) {
-  console.error('NEXTCLOUD_URL and NEXTCLOUD_SHARE_TOKEN required in .env');
+if (typeof mod.invalidatePhotoSync === 'function') mod.invalidatePhotoSync();
+const photos = await mod.getPhotos();
+
+if (photos.length === 0) {
+  console.error('No photos found. Check that the Nextcloud share has images and that .env is configured.');
   process.exit(1);
 }
 
-const client = createClient(`${url}/public.php/webdav`, {
-  username: token,
-  password: process.env.NEXTCLOUD_SHARE_PASSWORD || '',
-});
-
-// --------- Read state ---------
-async function readJson(p, fallback) {
-  try {
-    return JSON.parse(await fs.readFile(p, 'utf-8'));
-  } catch {
-    return fallback;
-  }
-}
-
+// Use zh-TW country names for the folder structure — these are what
+// the user will see when they open the Nextcloud share in a file
+// browser. Mirror the same canonical mapping as src/lib/photos.ts but
+// in zh-TW so the folder names read naturally to a Chinese reader.
 const COUNTRY_NAME_TW = {
   jp: '日本', tw: '臺灣', cn: '中國', hk: '香港', mo: '澳門',
   my: '馬來西亞', sg: '新加坡', th: '泰國', vn: '越南', ph: '菲律賓',
@@ -67,50 +54,35 @@ const COUNTRY_NAME_TW = {
   eg: '埃及', za: '南非', ae: '阿聯酋', sa: '沙烏地阿拉伯', il: '以色列',
 };
 
-function normalizeCountry(c, code) {
+const UNCATEGORISED_COUNTRY = '未分類';
+const UNCATEGORISED_DAY = '未分類日期';
+
+function countryFolder(country, code) {
+  if (!country || country === 'Unlocated') return UNCATEGORISED_COUNTRY;
   if (code && COUNTRY_NAME_TW[code.toLowerCase()]) return COUNTRY_NAME_TW[code.toLowerCase()];
-  return (c || '').split(/[;/,]/)[0].trim();
+  return (country || '').split(/[;/,]/)[0].trim() || UNCATEGORISED_COUNTRY;
 }
-
-const cache = await readJson(CACHE_PATH, {});
-const metadata = await readJson(METADATA_PATH, {});
-
-const cacheEntries = Object.entries(cache);
-if (cacheEntries.length === 0) {
-  console.error('photos-cache.json is empty. Open the dev site once first so the cache is populated.');
-  process.exit(1);
-}
-
-// --------- Find all image files actually on Nextcloud (incl. ones with no GPS) ---------
-console.log('Listing all images on Nextcloud…');
-const all = await client.getDirectoryContents('/', {
-  deep: true,
-  glob: '/**/*.{jpg,jpeg,JPG,JPEG}',
-});
-const liveFiles = all
-  .filter((it) => it.type === 'file' && /\.jpe?g$/i.test(it.basename))
-  .map((it) => it.filename.replace(/^\/+/, ''));
 
 // --------- Plan ---------
-const plan = []; // { src, dst, country, hasGps }
-
-for (const relPath of liveFiles) {
-  const basename = path.posix.basename(relPath);
-  const cached = cache[relPath];
-  let folder = UNCATEGORISED;
-  if (cached) {
-    const country = normalizeCountry(cached.country, cached.countryCode);
-    if (country && country !== '未知') folder = country;
+const plan = [];
+for (const p of photos) {
+  const folder = countryFolder(p.country, p.countryCode);
+  let dst;
+  if (folder === UNCATEGORISED_COUNTRY) {
+    // No country → don't nest a date folder (both axes missing isn't useful)
+    dst = `${folder}/${p.file}`;
+  } else {
+    const day = p.datetime ? p.datetime.slice(0, 10) : UNCATEGORISED_DAY;
+    dst = `${folder}/${day}/${p.file}`;
   }
-  const dst = `${folder}/${basename}`;
-  if (relPath === dst) continue;
-  plan.push({ src: relPath, dst, country: folder, hasGps: !!cached });
+  if (p.path === dst) continue;
+  plan.push({ src: p.path, dst, country: folder });
 }
 
 // --------- Display plan ---------
 console.log('');
 console.log('─'.repeat(72));
-console.log(`Plan: ${plan.length} move(s) (out of ${liveFiles.length} files)`);
+console.log(`Plan: ${plan.length} move(s) (out of ${photos.length} photos)`);
 console.log('─'.repeat(72));
 
 const byCountry = new Map();
@@ -139,65 +111,22 @@ console.log('─'.repeat(72));
 console.log('Executing…');
 console.log('─'.repeat(72));
 
-function thumbKeyOf(p) {
-  return p.replace(/\.(jpe?g)$/i, '').replace(/[\/\\]/g, '__');
-}
-
-let ok = 0, failed = 0;
-const createdDirs = new Set();
-
-async function ensureDir(folder) {
-  if (folder === '' || createdDirs.has(folder)) return;
-  try {
-    await client.createDirectory('/' + folder, { recursive: true });
-  } catch (err) {
-    // ignore "exists" failures (Nextcloud returns 405 if dir exists)
-  }
-  createdDirs.add(folder);
-}
-
+let ok = 0;
+let failed = 0;
 for (const m of plan) {
-  const dstFolder = path.posix.dirname(m.dst);
-  try {
-    await ensureDir(dstFolder);
-    await client.moveFile('/' + m.src, '/' + m.dst);
-
-    // 1. metadata.json: rename key
-    if (metadata[m.src]) {
-      metadata[m.dst] = metadata[m.src];
-      delete metadata[m.src];
-    }
-    // 2. photos-cache.json: rename key + update thumbKey
-    if (cache[m.src]) {
-      const newThumbKey = thumbKeyOf(m.dst);
-      const oldThumbKey = cache[m.src].thumbKey;
-      cache[m.dst] = { ...cache[m.src], thumbKey: newThumbKey };
-      delete cache[m.src];
-
-      // 3. Rename thumb files
-      for (const size of THUMB_SIZES) {
-        const oldT = path.join(THUMBS_DIR, size, `${oldThumbKey}.jpg`);
-        const newT = path.join(THUMBS_DIR, size, `${newThumbKey}.jpg`);
-        try {
-          await fs.rename(oldT, newT);
-        } catch {
-          /* thumb missing — will regenerate on next dev hit */
-        }
-      }
-    }
+  const res = await mod.renamePhotoFile(m.src, m.dst);
+  if (res.ok) {
     console.log(`  ✓  ${m.src}  →  ${m.dst}`);
     ok++;
-  } catch (err) {
-    console.error(`  ✗  ${m.src}: ${err.message || err}`);
+  } else {
+    console.error(`  ✗  ${m.src}: ${res.error || 'unknown error'}`);
     failed++;
   }
 }
 
-await fs.writeFile(METADATA_PATH, JSON.stringify(metadata, null, 2), 'utf-8');
-await fs.writeFile(CACHE_PATH, JSON.stringify(cache, null, 2), 'utf-8');
+if (typeof mod.invalidatePhotoSync === 'function') mod.invalidatePhotoSync();
 
 console.log('');
 console.log('─'.repeat(72));
 console.log(`Done. ${ok} moved, ${failed} failed.`);
-console.log('Vite watcher will pick this up within ~30s and reload the page.');
 console.log('─'.repeat(72));
