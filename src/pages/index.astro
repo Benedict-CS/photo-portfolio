@@ -366,12 +366,12 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
       // Fly to the actual marker position (not p.lat/p.lon — that loses the
       // world-copy offset for markers placed in adjacent world copies).
       // Only zoom IN, never out, so a user already zoomed deeper keeps their
-      // context. Zoom 13 ≈ district level — close enough to anchor the photo
-      // in a place, far enough that the surroundings still read. Flag the
-      // move so the zoomstart preview-close listener doesn't immediately
-      // tear down the preview we just opened.
+      // context. Zoom 8 ≈ region / prefecture level — keeps the photo in
+      // a wide geographical context rather than dropping the user onto a
+      // single street. Flag the move so the zoomstart preview-close
+      // listener doesn't immediately tear down the just-opened preview.
       programmaticMove = true;
-      map.flyTo(m.getLatLng(), Math.max(map.getZoom(), 13), { duration: 0.6 });
+      map.flyTo(m.getLatLng(), Math.max(map.getZoom(), 8), { duration: 0.6 });
       map.once('moveend', () => { programmaticMove = false; });
       // Pass the entire photo set + current index so the preview's
       // prev/next arrows can step through every other marker without
