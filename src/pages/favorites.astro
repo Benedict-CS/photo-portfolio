@@ -22,10 +22,20 @@ function fmtDuration(s: number | null): string {
   <div class="app-shell">
     <TopBar photos={photos} active="favorites" />
     <main class="favs-main">
-      <header class="favs-header">
-        <h1>⭐ Favorites</h1>
-        <p class="favs-sub">{favorites.length} {favorites.length === 1 ? 'photo' : 'photos'}</p>
-      </header>
+      {(() => {
+        const fp = favorites.filter((p) => p.kind !== 'video').length;
+        const fv = favorites.filter((p) => p.kind === 'video').length;
+        const parts: string[] = [];
+        if (fp) parts.push(`${fp} photo${fp === 1 ? '' : 's'}`);
+        if (fv) parts.push(`${fv} video${fv === 1 ? '' : 's'}`);
+        const subLine = parts.length ? parts.join(' · ') : '0 photos';
+        return (
+          <header class="favs-header">
+            <h1>⭐ Favorites</h1>
+            <p class="favs-sub">{subLine}</p>
+          </header>
+        );
+      })()}
       {favorites.length === 0 ? (
         <div class="empty-state">
           <div class="empty-icon">⭐</div>

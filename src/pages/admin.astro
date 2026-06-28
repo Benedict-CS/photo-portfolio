@@ -13,6 +13,14 @@ const photos = await getPhotos();
 const located = photos.filter((p) => p.lat !== null && p.lon !== null).length;
 const favorites = photos.filter((p) => p.favorite).length;
 const manualCount = photos.filter((p) => p.manualLocation).length;
+const photoCount = photos.filter((p) => p.kind !== 'video').length;
+const videoCount = photos.filter((p) => p.kind === 'video').length;
+// "29 photos · 1 video" — same shape as TopBar so the header reads
+// consistently across the app.
+const countParts: string[] = [];
+if (photoCount) countParts.push(`${photoCount} photo${photoCount === 1 ? '' : 's'}`);
+if (videoCount) countParts.push(`${videoCount} video${videoCount === 1 ? '' : 's'}`);
+const countLine = countParts.join(' · ');
 
 let dbBytes = 0;
 try {
@@ -71,12 +79,13 @@ const totalNeedsAction = buckets[0].photos.length;
       <header class="admin-header">
         <h1>⚙️ Admin</h1>
         <p class="admin-sub">
-          <b>{photos.length}</b> photos · <b>{totalNeedsAction}</b> waiting for action
+          {countLine} · <b>{totalNeedsAction}</b> waiting for action
         </p>
       </header>
 
       <section class="stat-row">
-        <div class="stat"><span class="lbl">Photos</span><span class="num">{photos.length}</span></div>
+        <div class="stat"><span class="lbl">Photos</span><span class="num">{photoCount}</span></div>
+        <div class="stat"><span class="lbl">Videos</span><span class="num">{videoCount}</span></div>
         <div class="stat"><span class="lbl">Located</span><span class="num">{located}</span></div>
         <div class="stat"><span class="lbl">Favorites</span><span class="num">{favorites}</span></div>
         <div class="stat"><span class="lbl">Manually pinned</span><span class="num">{manualCount}</span></div>
