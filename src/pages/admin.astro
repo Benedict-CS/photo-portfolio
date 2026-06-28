@@ -125,7 +125,7 @@ const totalNeedsAction = buckets[0].photos.length;
                 </div>
                 <div class="thumbs">
                   {b.photos.map((p) => (
-                    <div class="thumb-cell" data-path={p.path}>
+                    <div class={`thumb-cell${p.kind === 'video' ? ' is-video' : ''}`} data-path={p.path}>
                       <a href={`/photos/${p.id}`} title={p.path} class="thumb-link">
                         <img loading="lazy" src={p.thumbs.s} alt="" />
                       </a>

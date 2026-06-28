@@ -145,6 +145,8 @@ const firstThumbs = countries.length
                       album: p.album,
                       file: p.file,
                       originalUrl: p.originalUrl,
+                      kind: p.kind,
+                      durationSec: p.durationSec,
                       path: p.path,
                     })))}
                   ></div>
@@ -758,6 +760,7 @@ const firstThumbs = countries.length
       cell.dataset.id = p.id;
       cell.dataset.path = p.path || '';
       cell.dataset.editable = p.editable ? '1' : '0';
+      if (p.kind === 'video') cell.classList.add('is-video');
       if (p.placeholder) cell.style.backgroundImage = `url("${p.placeholder}")`;
       const img = document.createElement('img');
       img.loading = 'lazy';

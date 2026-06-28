@@ -58,7 +58,7 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
 
       {tripGeoPhotos.length >= 2 && (
         <div id="trip-map" data-photos={JSON.stringify(tripGeoPhotos.map((p) => ({
-          lat: p.lat, lon: p.lon, thumb: p.thumbs.s, id: p.id, datetime: p.datetime,
+          lat: p.lat, lon: p.lon, thumb: p.thumbs.s, id: p.id, datetime: p.datetime, kind: p.kind,
         })))}></div>
       )}
 
@@ -68,7 +68,7 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
             <h2 class="day-label">{day}<span class="day-count"> · {dayPhotos.length}</span></h2>
             <div class="day-grid">
               {dayPhotos.map((p) => (
-                <a class="day-cell" href={`/photos/${p.id}`} title={p.datetime}>
+                <a class={`day-cell${p.kind === 'video' ? ' is-video' : ''}`} href={`/photos/${p.id}`} title={p.datetime}>
                   <img
                     loading="lazy"
                     decoding="async"
@@ -217,8 +217,9 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
       }).addTo(map);
 
       photos.forEach((p: any) => {
+        const cls = `photo-marker${p.kind === 'video' ? ' is-video' : ''}`;
         const icon = L.divIcon({
-          html: `<div class="photo-marker"><img loading="lazy" src="${p.thumb}" alt=""></div>`,
+          html: `<div class="${cls}"><img loading="lazy" src="${p.thumb}" alt=""></div>`,
           className: '',
           iconSize: [44, 44],
           iconAnchor: [22, 22],

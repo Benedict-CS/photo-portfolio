@@ -69,18 +69,30 @@ function flag(code: string) {
     )}
 
     <div class="stage">
-      <img
-        class="hero"
-        src={photo.thumbs.l}
-        data-original={photo.originalUrl}
-        alt={photo.description || `${photo.country || 'Photo'}${prettyDate ? ` · ${prettyDate}` : ''}`}
-        id="hero"
-        loading="eager"
-        decoding="async"
-        fetchpriority="high"
-        transition:name="detail-hero"
-        transition:animate="fade"
-      />
+      {photo.kind === 'video' ? (
+        <video
+          class="hero hero-video"
+          id="hero"
+          src={photo.originalUrl}
+          poster={photo.thumbs.l}
+          controls
+          playsinline
+          preload="metadata"
+        ></video>
+      ) : (
+        <img
+          class="hero"
+          src={photo.thumbs.l}
+          data-original={photo.originalUrl}
+          alt={photo.description || `${photo.country || 'Photo'}${prettyDate ? ` · ${prettyDate}` : ''}`}
+          id="hero"
+          loading="eager"
+          decoding="async"
+          fetchpriority="high"
+          transition:name="detail-hero"
+          transition:animate="fade"
+        />
+      )}
     </div>
 
     <div id="loc-modal" class="loc-modal" hidden>
@@ -271,6 +283,9 @@ function flag(code: string) {
     border-radius: 4px;
     box-shadow: 0 8px 40px rgba(0,0,0,0.6);
   }
+  /* Videos use the browser's native player chrome — don't claim a
+     zoom-in cursor (clicks go to the play/scrub controls, not a new tab). */
+  .detail-page .hero-video { cursor: default; background: #000; }
 
   .detail-page .info-bar {
     padding: 12px 28px 18px;
@@ -662,9 +677,15 @@ function flag(code: string) {
     arrows.forEach((a) => a.addEventListener('mouseenter', drop, { once: true, signal: __signal }));
   }
 
-  document.getElementById('hero')?.addEventListener('click', () => {
-    window.open(originalUrl, '_blank');
-  });
+  // Hero click → open the original in a new tab. Skip for <video> because
+  // the user is interacting with the native player controls (play / scrub),
+  // and intercepting clicks would steal those gestures.
+  const heroEl = document.getElementById('hero');
+  if (heroEl && heroEl.tagName !== 'VIDEO') {
+    heroEl.addEventListener('click', () => {
+      window.open(originalUrl, '_blank');
+    });
+  }
 
   // Note: back-btn click is wired via inline onclick (simpler, no race
   // with other JS). Esc key handled in the keydown listener above.

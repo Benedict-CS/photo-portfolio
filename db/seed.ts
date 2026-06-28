@@ -48,7 +48,7 @@ export default async function seed() {
       path: p,
       file: path.posix.basename(p),
       etag: '', // forces re-sync on first run
-      thumbKey: p.replace(/\.(jpe?g)$/i, '').replace(/[\/\\]/g, '__'),
+      thumbKey: p.replace(/\.(jpe?g|mp4|mov)$/i, '').replace(/[\/\\]/g, '__'),
       placeholder: null,
       lat: typeof m.lat === 'number' ? m.lat : null,
       lon: typeof m.lon === 'number' ? m.lon : null,
@@ -58,6 +58,8 @@ export default async function seed() {
       exifLat: null,
       exifLon: null,
       exifDatetime: null,
+      kind: /\.(mp4|mov)$/i.test(p) ? 'video' : 'photo',
+      durationSec: null,
       title: m.title || '',
       album: m.album || '',
       description: m.description || '',

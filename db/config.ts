@@ -43,6 +43,11 @@ const Photo = defineTable({
     /** Camera / phone model from EXIF. e.g. "OPPO Reno10 Pro+ 5G". */
     camera: column.text({ optional: true }),
 
+    /** 'photo' (JPEG/HEIC) or 'video' (MP4/MOV). Existing rows default to 'photo'. */
+    kind: column.text({ default: 'photo' }),
+    /** Video duration in seconds (videos only). */
+    durationSec: column.number({ optional: true }),
+
     /** Starred photos appear on /favorites and get a ⭐ overlay everywhere. */
     favorite: column.boolean({ default: false }),
 

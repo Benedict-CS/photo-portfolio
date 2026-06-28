@@ -313,10 +313,13 @@ const photos = allPhotos.filter((p) => p.lat !== null && p.lon !== null);
   //  Fixed minZoom of 2 is set in the map options above; small grey peeks at
   //  the very edge are acceptable.)
 
-  // Custom photo-thumbnail markers (circular)
+  // Custom photo-thumbnail markers (circular). Videos get the shared
+  // ▶ overlay via the .is-video class so the user can tell apart
+  // photo and video markers at a glance.
   function photoMarkerIcon(photo) {
+    const cls = `photo-marker${photo.kind === 'video' ? ' is-video' : ''}`;
     return L.divIcon({
-      html: `<div class="photo-marker"><img loading="lazy" src="${photo.thumbs.s}" alt=""></div>`,
+      html: `<div class="${cls}"><img loading="lazy" src="${photo.thumbs.s}" alt=""></div>`,
       className: '',
       iconSize: [52, 52],
       iconAnchor: [26, 26],

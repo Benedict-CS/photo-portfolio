@@ -81,7 +81,7 @@ function countryFolder(country, code) {
 }
 
 function thumbKey(p) {
-  return p.replace(/\.(jpe?g)$/i, '').replace(/[/\\]/g, '__');
+  return p.replace(/\.(jpe?g|mp4|mov)$/i, '').replace(/[/\\]/g, '__');
 }
 
 // ---------- Read all photo rows ----------

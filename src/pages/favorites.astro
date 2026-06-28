@@ -33,7 +33,7 @@ favorites.sort((a, b) => (b.datetime || '').localeCompare(a.datetime || ''));
       ) : (
         <div class="favs-grid">
           {favorites.map((p) => (
-            <a href={`/photos/${p.id}`} class="fav-card" title={p.path}>
+            <a href={`/photos/${p.id}`} class={`fav-card${p.kind === 'video' ? ' is-video' : ''}`} title={p.path}>
               <img
                 loading="lazy"
                 src={p.thumbs.s}

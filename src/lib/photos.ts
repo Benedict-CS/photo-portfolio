@@ -11,12 +11,14 @@
  *   - Edits go through src/pages/api/metadata.ts (alive in production)
  */
 import { promises as fs } from 'node:fs';
+import { spawn } from 'node:child_process';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import exifr from 'exifr';
 import sharp from 'sharp';
 import { createClient, type FileStat, type WebDAVClient } from 'webdav';
-import { db, Photo as PhotoTable, eq } from 'astro:db';
+import { db, Photo as PhotoTable, eq, sql } from 'astro:db';
 
 // Anchor file-system writes off the process cwd, not `import.meta.url` —
 // after Astro bundles, `__dirname` lands somewhere deep in `dist/server/chunks`
@@ -45,6 +47,12 @@ const THUMBS_DIR = IS_PROD
   ? path.join(PROJECT_ROOT, 'dist', 'client', 'thumbs')
   : path.join(PROJECT_ROOT, 'public', 'thumbs');
 const IMG_EXTS = new Set(['.jpg', '.jpeg']);
+const VIDEO_EXTS = new Set(['.mp4', '.mov']);
+const ALL_EXTS = new Set<string>([...IMG_EXTS, ...VIDEO_EXTS]);
+
+function isVideoExt(ext: string): boolean {
+  return VIDEO_EXTS.has(ext.toLowerCase());
+}
 
 export const THUMB_SPECS = {
   s: { px: 200, fit: 'cover' as const },
@@ -78,6 +86,10 @@ export interface PhotoView {
   description: string;
   /** Camera / phone model from EXIF (e.g. "OPPO Reno10 Pro+ 5G"). Empty if unknown. */
   camera: string;
+  /** 'photo' or 'video' — picks <img> vs <video> in the UI. */
+  kind: 'photo' | 'video';
+  /** Duration in seconds, videos only (else null). */
+  durationSec: number | null;
   favorite: boolean;
   thumbs: Record<ThumbSize, string>;
   originalUrl: string;
@@ -179,15 +191,20 @@ function exifDateToIso(dt: unknown): string {
   return String(dt);
 }
 
+// Strip any extension we know how to ingest (image OR video) before
+// slugifying / keying. Keeps thumb keys stable across photo/video kinds and
+// avoids `.mp4` segments leaking into URLs.
+const KNOWN_EXT_RE = /\.(jpe?g|mp4|mov)$/i;
+
 function slugify(p: string): string {
   return p
-    .replace(/\.(jpe?g)$/i, '')
+    .replace(KNOWN_EXT_RE, '')
     .replace(/[^\w\-/]+/g, '-')
     .replace(/\/+/g, '--');
 }
 
 function thumbKey(relPath: string): string {
-  return relPath.replace(/\.(jpe?g)$/i, '').replace(/[\/\\]/g, '__');
+  return relPath.replace(KNOWN_EXT_RE, '').replace(/[\/\\]/g, '__');
 }
 
 function makeClient(): WebDAVClient {
@@ -212,9 +229,9 @@ function originalUrl(relPath: string): string {
 async function listFilesRecursive(client: WebDAVClient): Promise<FileStat[]> {
   const items = (await client.getDirectoryContents('/', {
     deep: true,
-    glob: '/**/*.{jpg,jpeg,JPG,JPEG}',
+    glob: '/**/*.{jpg,jpeg,JPG,JPEG,mp4,mov,MP4,MOV}',
   })) as FileStat[];
-  return items.filter((it) => it.type === 'file' && IMG_EXTS.has(path.extname(it.basename).toLowerCase()));
+  return items.filter((it) => it.type === 'file' && ALL_EXTS.has(path.extname(it.basename).toLowerCase()));
 }
 
 async function makePlaceholder(buf: Buffer): Promise<string> {
@@ -263,11 +280,172 @@ async function cleanupOrphanThumbs(liveKeys: Set<string>): Promise<number> {
   return removed;
 }
 
+// ---------- Video helpers (ffmpeg / ffprobe) ----------
+
+/**
+ * Write a video buffer to a temp file, run a callback with its path, then
+ * unlink. ffmpeg + ffprobe both need a real file (stdin can't seek for
+ * most container formats), so this is the cheapest reliable wrapper.
+ */
+async function withTempVideoFile<T>(
+  buf: Buffer,
+  ext: string,
+  fn: (p: string) => Promise<T>,
+): Promise<T> {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pp-video-'));
+  const p = path.join(dir, 'in' + ext);
+  await fs.writeFile(p, buf);
+  try {
+    return await fn(p);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true }).catch(() => undefined);
+  }
+}
+
+function runProc(
+  cmd: string,
+  args: string[],
+): Promise<{ stdout: Buffer; stderr: string; code: number }> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(cmd, args);
+    const out: Buffer[] = [];
+    let err = '';
+    proc.stdout.on('data', (d: Buffer) => out.push(d));
+    proc.stderr.on('data', (d: Buffer) => { err += d.toString(); });
+    proc.on('error', reject);
+    proc.on('close', (code) =>
+      resolve({ stdout: Buffer.concat(out), stderr: err, code: code ?? -1 }),
+    );
+  });
+}
+
+/**
+ * Pull a single representative frame out of a video and return it as JPEG
+ * bytes (which sharp can downsize to all 3 thumb sizes + the LQIP). Uses
+ * the `thumbnail` filter so we don't end up with a black intro frame.
+ */
+async function extractVideoPoster(filePath: string): Promise<Buffer> {
+  const { stdout, stderr, code } = await runProc('ffmpeg', [
+    '-y',
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-i', filePath,
+    '-vf', 'thumbnail,scale=1600:-1:flags=lanczos',
+    '-frames:v', '1',
+    '-f', 'image2',
+    '-vcodec', 'mjpeg',
+    '-q:v', '3',
+    'pipe:1',
+  ]);
+  if (code !== 0 || stdout.length === 0) {
+    throw new Error(`ffmpeg poster failed (code ${code}): ${stderr.trim()}`);
+  }
+  return stdout;
+}
+
+/**
+ * Parse an ISO 6709 location string ("+25.0330+121.5654+010.000/") into
+ * { lat, lon }. Returns null for unparseable input.
+ */
+function parseIso6709(s: string): { lat: number; lon: number } | null {
+  const m = s.match(/^([+\-]\d+(?:\.\d+)?)([+\-]\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const lat = parseFloat(m[1]);
+  const lon = parseFloat(m[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { lat, lon };
+}
+
+interface VideoMeta {
+  lat?: number;
+  lon?: number;
+  datetime?: string;
+  camera: string;
+  durationSec?: number;
+}
+
+async function readVideoMeta(filePath: string): Promise<VideoMeta> {
+  const { stdout, code } = await runProc('ffprobe', [
+    '-v', 'quiet',
+    '-print_format', 'json',
+    '-show_format',
+    '-show_streams',
+    filePath,
+  ]);
+  if (code !== 0) return { camera: '' };
+  let probe: any;
+  try { probe = JSON.parse(stdout.toString()); }
+  catch { return { camera: '' }; }
+
+  const fmtTags = probe?.format?.tags || {};
+  // Some containers expose location only on the first stream's tags.
+  const streamTags = (probe?.streams || []).find((s: any) => s?.tags)?.tags || {};
+  const iso =
+    fmtTags['com.apple.quicktime.location.ISO6709'] ||
+    streamTags['com.apple.quicktime.location.ISO6709'] ||
+    fmtTags.location ||
+    streamTags.location ||
+    '';
+  const loc = typeof iso === 'string' && iso ? parseIso6709(iso) : null;
+
+  const ct = fmtTags.creation_time || streamTags.creation_time || '';
+  let datetime = '';
+  if (ct) {
+    const d = new Date(ct);
+    if (!Number.isNaN(d.getTime())) datetime = exifDateToIso(d);
+  }
+
+  const make = String(
+    fmtTags['com.apple.quicktime.make'] || fmtTags.make || '',
+  ).trim();
+  const model = String(
+    fmtTags['com.apple.quicktime.model'] || fmtTags.model || '',
+  ).trim();
+  let camera = '';
+  if (model && make && model.toLowerCase().startsWith(make.toLowerCase())) camera = model;
+  else if (make && model) camera = `${make} ${model}`;
+  else camera = model || make;
+
+  const durationSec = Number(probe?.format?.duration);
+
+  return {
+    lat: loc?.lat,
+    lon: loc?.lon,
+    datetime,
+    camera,
+    durationSec: Number.isFinite(durationSec) ? durationSec : undefined,
+  };
+}
+
 // ---------- Sync: Nextcloud → DB ----------
 
 let syncing: Promise<void> | null = null;
 let lastSync = 0;
 const SYNC_TTL_MS = 5_000; // re-list Nextcloud at most every 5s
+
+// Self-healing one-shot ALTERs for columns added after a deploy's last
+// `npm run build`. preserve-db.mjs restores the live DB *over* the freshly
+// seeded one, so the new schema columns are missing on existing installs.
+// Each ALTER is wrapped in try/catch — "duplicate column" is the expected
+// no-op once the column exists.
+let migrationsRan = false;
+async function ensureSchemaMigrations() {
+  if (migrationsRan) return;
+  migrationsRan = true;
+  const migrations = [
+    sql`ALTER TABLE Photo ADD COLUMN kind TEXT NOT NULL DEFAULT 'photo'`,
+    sql`ALTER TABLE Photo ADD COLUMN durationSec REAL`,
+  ];
+  for (const m of migrations) {
+    try { await db.run(m); }
+    catch (err: any) {
+      const msg = String(err?.message || err);
+      if (!/duplicate column|already exists/i.test(msg)) {
+        console.warn('[photos] schema migration warning:', msg);
+      }
+    }
+  }
+}
 
 /** Force the next read to re-list Nextcloud. */
 export function invalidatePhotoSync() {
@@ -279,6 +457,7 @@ async function syncFromNextcloud() {
   if (Date.now() - lastSync < SYNC_TTL_MS) return;
 
   syncing = (async () => {
+    await ensureSchemaMigrations();
     const client = makeClient();
     const files = await listFilesRecursive(client);
 
@@ -308,38 +487,71 @@ async function syncFromNextcloud() {
         continue;
       }
 
-      // Need to (re-)process: download, EXIF, thumbs, placeholder, geocode.
+      // Need to (re-)process: download, metadata, thumbs, placeholder, geocode.
       const raw = await client.getFileContents(item.filename);
       const buf: Buffer = Buffer.isBuffer(raw) ? raw : Buffer.from(raw as ArrayBuffer);
       downloaded++;
+
+      const ext = path.extname(relPath).toLowerCase();
+      const isVideo = isVideoExt(ext);
+      const kind: 'photo' | 'video' = isVideo ? 'video' : 'photo';
 
       let exifLat: number | undefined;
       let exifLon: number | undefined;
       let exifDt: string | undefined;
       let camera = '';
-      try {
-        const parsed = await exifr.parse(buf, {
-          ifd0: ['Make', 'Model'],
-          exif: ['DateTimeOriginal'],
-          gps: true,
-          interop: false, thumbnail: false, iptc: false, icc: false, xmp: false, jfif: false,
-        });
-        exifLat = safeNum(parsed?.latitude) ?? undefined;
-        exifLon = safeNum(parsed?.longitude) ?? undefined;
-        exifDt = exifDateToIso(parsed?.DateTimeOriginal);
-        // Compose camera string: drop Make if Model already starts with it
-        // (avoids "OPPO OPPO Reno10..." duplication).
-        const make = (parsed?.Make || '').trim();
-        const model = (parsed?.Model || '').trim();
-        if (model && make && model.toLowerCase().startsWith(make.toLowerCase())) camera = model;
-        else if (make && model) camera = `${make} ${model}`;
-        else camera = model || make;
-      } catch {
-        /* unreadable */
+      let durationSec: number | undefined;
+      // posterBuf is what sharp consumes for thumbs + LQIP. For photos it's
+      // the original bytes; for videos it's a ffmpeg-extracted frame.
+      let posterBuf: Buffer = buf;
+
+      if (isVideo) {
+        try {
+          await withTempVideoFile(buf, ext, async (p) => {
+            const meta = await readVideoMeta(p);
+            exifLat = meta.lat;
+            exifLon = meta.lon;
+            exifDt = meta.datetime;
+            camera = meta.camera;
+            durationSec = meta.durationSec;
+            posterBuf = await extractVideoPoster(p);
+          });
+        } catch (err) {
+          console.warn(`[photos] video processing failed for ${relPath}:`, err);
+          // Leave posterBuf as the raw video bytes — sharp will fail on the
+          // next step and we'll skip writing thumbs for this one. The row
+          // still gets inserted so the file shows up in admin as broken.
+        }
+      } else {
+        try {
+          const parsed = await exifr.parse(buf, {
+            ifd0: ['Make', 'Model'],
+            exif: ['DateTimeOriginal'],
+            gps: true,
+            interop: false, thumbnail: false, iptc: false, icc: false, xmp: false, jfif: false,
+          });
+          exifLat = safeNum(parsed?.latitude) ?? undefined;
+          exifLon = safeNum(parsed?.longitude) ?? undefined;
+          exifDt = exifDateToIso(parsed?.DateTimeOriginal);
+          // Compose camera string: drop Make if Model already starts with it
+          // (avoids "OPPO OPPO Reno10..." duplication).
+          const make = (parsed?.Make || '').trim();
+          const model = (parsed?.Model || '').trim();
+          if (model && make && model.toLowerCase().startsWith(make.toLowerCase())) camera = model;
+          else if (make && model) camera = `${make} ${model}`;
+          else camera = model || make;
+        } catch {
+          /* unreadable */
+        }
       }
 
-      await ensureThumbsFromBuffer(buf, key);
-      const placeholder = await makePlaceholder(buf);
+      let placeholder = '';
+      try {
+        await ensureThumbsFromBuffer(posterBuf, key);
+        placeholder = await makePlaceholder(posterBuf);
+      } catch (err) {
+        console.warn(`[photos] thumb generation failed for ${relPath}:`, err);
+      }
 
       // Preserve user fields and any prior manual overrides from existing row.
       const manualLatExisting = existing && existing.lat !== existing.exifLat ? existing.lat : null;
@@ -376,6 +588,8 @@ async function syncFromNextcloud() {
         exifLon: safeNum(exifLon),
         exifDatetime: exifDt || null,
         camera: camera || null,
+        kind,
+        durationSec: durationSec ?? null,
         updatedAt: new Date(),
       };
       if (existing) {
@@ -420,6 +634,7 @@ function rowToView(r: any): PhotoView {
   const key = r.thumbKey as string;
   const editable =
     lat === null || lon === null || manualLocation || !datetime || manualDatetime;
+  const kind: 'photo' | 'video' = r.kind === 'video' ? 'video' : 'photo';
   return {
     path: r.path,
     id: slugify(r.path),
@@ -436,6 +651,8 @@ function rowToView(r: any): PhotoView {
     album: r.album || '',
     description: r.description || '',
     camera: r.camera || '',
+    kind,
+    durationSec: typeof r.durationSec === 'number' ? r.durationSec : null,
     favorite: !!r.favorite,
     thumbs: {
       s: `/thumbs/s/${encodeURIComponent(key)}.webp`,
@@ -551,6 +768,14 @@ export async function getPhotoByPath(p: string): Promise<PhotoView | undefined> 
  * Returns the buffer + filename + mime so the API route can stream it
  * back to the browser without ever exposing the share token client-side.
  */
+const MIME_BY_EXT: Record<string, string> = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+};
+
 export async function fetchOriginalById(
   id: string,
 ): Promise<{ buffer: Buffer; filename: string; contentType: string } | null> {
@@ -560,7 +785,7 @@ export async function fetchOriginalById(
   const client = makeClient();
   const data = (await client.getFileContents('/' + row.path)) as Buffer;
   const ext = path.extname(row.file).toLowerCase();
-  const contentType = ext === '.png' ? 'image/png' : 'image/jpeg';
+  const contentType = MIME_BY_EXT[ext] || 'application/octet-stream';
   return { buffer: data, filename: row.file, contentType };
 }
 

@@ -209,6 +209,9 @@
       // sequence fires whenever the new image actually paints.
       hero.src = photo.thumbs?.l ?? '';
       hero.alt = photo.album || photo.file || '';
+      // Videos show their poster + a ▶ overlay; tapping still routes to
+      // /photos/<id> for the full <video> player (one source of truth).
+      panel.classList.toggle('is-video', photo.kind === 'video');
       const dt = photo.datetime ? photo.datetime.slice(0, 10) : '';
       datetimeEl.textContent = dt;
       datetimeEl.style.display = dt ? '' : 'none';

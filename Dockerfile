@@ -28,8 +28,10 @@ ENV PORT=4321
 
 # sharp's libvips runtime, plus the tools the backup + verify scripts
 # shell out to: zip/unzip for archive operations, sqlite for the
-# row-count step of npm run verify-backup. tini handles signals.
-RUN apk add --no-cache vips tini zip unzip sqlite
+# row-count step of npm run verify-backup. ffmpeg/ffprobe are used to
+# extract a poster frame + metadata from MP4/MOV videos during sync.
+# tini handles signals.
+RUN apk add --no-cache vips tini zip unzip sqlite ffmpeg
 
 # Drop privileges
 RUN addgroup -g 1001 app && adduser -D -u 1001 -G app app
