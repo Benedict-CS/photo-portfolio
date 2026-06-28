@@ -18,6 +18,16 @@ function flag(code: string) {
   );
 }
 
+function fmtDuration(s: number | null): string {
+  if (s == null || !isFinite(s) || s < 0) return '';
+  const total = Math.round(s);
+  const m = Math.floor(total / 60);
+  const sec = total % 60;
+  if (m < 60) return `${m}:${String(sec).padStart(2, '0')}`;
+  const h = Math.floor(m / 60);
+  return `${h}:${String(m % 60).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
 const prettyDates =
   trip.start === trip.end ? trip.start : `${trip.start} – ${trip.end}`;
 
@@ -77,6 +87,9 @@ const days = [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]));
                     alt=""
                     onload="this.classList.add('loaded')"
                   />
+                  {p.kind === 'video' && p.durationSec != null && (
+                    <div class="duration-tag">{fmtDuration(p.durationSec)}</div>
+                  )}
                 </a>
               ))}
             </div>

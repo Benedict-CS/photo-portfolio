@@ -41,9 +41,13 @@ const SHARE_PASSWORD = (
 
 const UPLOAD_MAX = 10;
 const UPLOAD_WINDOW_MS = 60_000;
-const MAX_FILE_SIZE = 50 * 1024 * 1024;
+// Photos cap at 50 MB; videos at 200 MB. A 30s 4K iPhone clip is roughly
+// 100–150 MB and we want headroom for one or two more.
+const MAX_PHOTO_SIZE = 50 * 1024 * 1024;
+const MAX_VIDEO_SIZE = 200 * 1024 * 1024;
 const MAX_FILES_PER_REQUEST = 20;
-const VALID_EXT = /\.(jpe?g)$/i;
+const VALID_EXT = /\.(jpe?g|mp4|mov)$/i;
+const VIDEO_EXT = /\.(mp4|mov)$/i;
 
 function safeEq(a: string, b: string): boolean {
   if (a.length !== b.length) return false;
@@ -139,12 +143,15 @@ export const POST: APIRoute = async ({ request }) => {
       results.push({ name: file.name, ok: false, error: 'empty file' });
       continue;
     }
-    if (file.size > MAX_FILE_SIZE) {
-      results.push({ name: file.name, ok: false, error: 'file too large (>50 MB)' });
+    if (!VALID_EXT.test(file.name)) {
+      results.push({ name: file.name, ok: false, error: 'only .jpg / .jpeg / .mp4 / .mov accepted' });
       continue;
     }
-    if (!VALID_EXT.test(file.name)) {
-      results.push({ name: file.name, ok: false, error: 'only .jpg / .jpeg accepted' });
+    const isVideo = VIDEO_EXT.test(file.name);
+    const cap = isVideo ? MAX_VIDEO_SIZE : MAX_PHOTO_SIZE;
+    if (file.size > cap) {
+      const capMB = Math.round(cap / 1024 / 1024);
+      results.push({ name: file.name, ok: false, error: `file too large (>${capMB} MB)` });
       continue;
     }
     try {

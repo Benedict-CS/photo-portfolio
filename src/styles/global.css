@@ -159,6 +159,25 @@ input:focus-visible,
   z-index: 2;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
+
+/* mm:ss duration tag in the corner of every video tile. Drives "is this
+   a 5-second clip or a 5-minute walkthrough?" decisions before the user
+   even commits to playing it. Shared by timeline / favorites / trips. */
+.duration-tag {
+  position: absolute;
+  bottom: 6px;
+  right: 6px;
+  background: rgba(0, 0, 0, 0.72);
+  color: white;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 2;
+  letter-spacing: 0.02em;
+  backdrop-filter: blur(4px);
+}
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
 

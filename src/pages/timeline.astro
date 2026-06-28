@@ -743,6 +743,17 @@ const firstThumbs = countries.length
     }
   }, { signal });
 
+  // ---- Helpers ----
+  function fmtDuration(s: number): string {
+    if (s == null || !isFinite(s) || s < 0) return '';
+    const total = Math.round(s);
+    const m = Math.floor(total / 60);
+    const sec = total % 60;
+    if (m < 60) return `${m}:${String(sec).padStart(2, '0')}`;
+    const h = Math.floor(m / 60);
+    return `${h}:${String(m % 60).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+  }
+
   // ---- Pure-CSS-grid layout (no JS reflow) ----
   // Build each cell as a regular DOM node. The CSS `grid-template-columns:
   // repeat(auto-fill, minmax(150px, 1fr))` + `aspect-ratio: 1` on the
@@ -781,6 +792,12 @@ const firstThumbs = countries.length
       dateTag.className = 'date-tag';
       dateTag.textContent = (p.datetime || '').slice(0, 10);
       cell.append(img, dateTag);
+      if (p.kind === 'video' && p.durationSec != null) {
+        const dur = document.createElement('div');
+        dur.className = 'duration-tag';
+        dur.textContent = fmtDuration(p.durationSec);
+        cell.append(dur);
+      }
       // Attach the full photo so preview:open can hand it to the panel.
       (cell as any)._photo = p;
       frag.append(cell);

@@ -60,6 +60,8 @@ export default async function seed() {
       exifDatetime: null,
       kind: /\.(mp4|mov)$/i.test(p) ? 'video' : 'photo',
       durationSec: null,
+      videoCodec: null,
+      bytes: null,
       title: m.title || '',
       album: m.album || '',
       description: m.description || '',

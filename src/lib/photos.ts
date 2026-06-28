@@ -46,12 +46,27 @@ const IS_PROD =
 const THUMBS_DIR = IS_PROD
   ? path.join(PROJECT_ROOT, 'dist', 'client', 'thumbs')
   : path.join(PROJECT_ROOT, 'public', 'thumbs');
+// HEVC videos get transcoded to H.264 MP4 here, keyed by thumbKey, so
+// Firefox + Chromium-on-Linux can decode them. Same dev/prod split as
+// THUMBS_DIR but the files are served via the API (we need Range
+// handling that the static layer doesn't give us).
+const VIDEOS_DIR = IS_PROD
+  ? path.join(PROJECT_ROOT, 'dist', 'client', 'videos')
+  : path.join(PROJECT_ROOT, 'public', 'videos');
 const IMG_EXTS = new Set(['.jpg', '.jpeg']);
 const VIDEO_EXTS = new Set(['.mp4', '.mov']);
 const ALL_EXTS = new Set<string>([...IMG_EXTS, ...VIDEO_EXTS]);
+// Codecs that need to be re-encoded as H.264 for cross-browser playback.
+// Phone footage is overwhelmingly HEVC (iPhone default) or H.264 (Android).
+const HEVC_CODECS = new Set(['hevc', 'h265']);
 
 function isVideoExt(ext: string): boolean {
   return VIDEO_EXTS.has(ext.toLowerCase());
+}
+
+/** Local path of the transcoded (or copied) H.264 MP4 for a given thumbKey. */
+function transcodedPath(key: string): string {
+  return path.join(VIDEOS_DIR, `${key}.mp4`);
 }
 
 export const THUMB_SPECS = {
@@ -90,8 +105,13 @@ export interface PhotoView {
   kind: 'photo' | 'video';
   /** Duration in seconds, videos only (else null). */
   durationSec: number | null;
+  /** Source codec ('hevc', 'h264', …). Videos only; null otherwise. */
+  videoCodec: string | null;
+  /** File size in bytes (after any HEVC→H.264 transcode for videos). */
+  bytes: number | null;
   favorite: boolean;
   thumbs: Record<ThumbSize, string>;
+  /** URL the browser hits to download the original (photo) or play the video. */
   originalUrl: string;
 }
 
@@ -277,6 +297,17 @@ async function cleanupOrphanThumbs(liveKeys: Set<string>): Promise<number> {
       /* dir missing — fine */
     }
   }
+  // Same pass for the transcoded-video cache so deleted/renamed videos
+  // don't leave stale .mp4 files on disk.
+  try {
+    for (const name of await fs.readdir(VIDEOS_DIR)) {
+      const key = name.replace(/\.mp4$/i, '');
+      if (!liveKeys.has(key)) {
+        await fs.unlink(path.join(VIDEOS_DIR, name));
+        removed++;
+      }
+    }
+  } catch { /* dir missing — fine */ }
   return removed;
 }
 
@@ -362,6 +393,8 @@ interface VideoMeta {
   datetime?: string;
   camera: string;
   durationSec?: number;
+  /** First video stream codec — 'hevc' / 'h264' / etc. Empty when ffprobe can't tell. */
+  videoCodec: string;
 }
 
 async function readVideoMeta(filePath: string): Promise<VideoMeta> {
@@ -372,14 +405,16 @@ async function readVideoMeta(filePath: string): Promise<VideoMeta> {
     '-show_streams',
     filePath,
   ]);
-  if (code !== 0) return { camera: '' };
+  if (code !== 0) return { camera: '', videoCodec: '' };
   let probe: any;
   try { probe = JSON.parse(stdout.toString()); }
-  catch { return { camera: '' }; }
+  catch { return { camera: '', videoCodec: '' }; }
 
   const fmtTags = probe?.format?.tags || {};
   // Some containers expose location only on the first stream's tags.
   const streamTags = (probe?.streams || []).find((s: any) => s?.tags)?.tags || {};
+  const videoStream = (probe?.streams || []).find((s: any) => s?.codec_type === 'video');
+  const videoCodec = String(videoStream?.codec_name || '').toLowerCase();
   const iso =
     fmtTags['com.apple.quicktime.location.ISO6709'] ||
     streamTags['com.apple.quicktime.location.ISO6709'] ||
@@ -414,7 +449,51 @@ async function readVideoMeta(filePath: string): Promise<VideoMeta> {
     datetime,
     camera,
     durationSec: Number.isFinite(durationSec) ? durationSec : undefined,
+    videoCodec,
   };
+}
+
+/**
+ * Re-encode the source video to broadly playable H.264 + AAC MP4 with the
+ * moov atom moved to the front (faststart) so progressive playback works
+ * from the first byte. Lands in VIDEOS_DIR/<key>.mp4. Idempotent — skips
+ * if the output already exists AND is non-empty.
+ */
+async function transcodeToH264(srcPath: string, key: string): Promise<void> {
+  const out = transcodedPath(key);
+  await fs.mkdir(path.dirname(out), { recursive: true });
+  try {
+    const stat = await fs.stat(out);
+    if (stat.size > 0) return; // already done
+  } catch { /* missing — proceed */ }
+  // `-preset fast` balances encode time vs compression for short personal
+  // clips. `-crf 23` is visually transparent for most viewers. `yuv420p`
+  // ensures broad <video> compatibility (some HEVC inputs are 10-bit which
+  // not every browser's H.264 decoder accepts). `+faststart` is critical
+  // for Range / scrubbing on first load.
+  const { code, stderr } = await runProc('ffmpeg', [
+    '-y',
+    '-hide_banner',
+    '-loglevel', 'error',
+    '-i', srcPath,
+    '-c:v', 'libx264',
+    '-preset', 'fast',
+    '-crf', '23',
+    '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac',
+    '-b:a', '128k',
+    '-movflags', '+faststart',
+    out,
+  ]);
+  if (code !== 0) {
+    await fs.unlink(out).catch(() => undefined);
+    throw new Error(`ffmpeg transcode failed (code ${code}): ${stderr.trim()}`);
+  }
+}
+
+/** Delete the cached transcoded file (if any) for a thumb key. */
+async function removeTranscoded(key: string): Promise<void> {
+  await fs.unlink(transcodedPath(key)).catch(() => undefined);
 }
 
 // ---------- Sync: Nextcloud → DB ----------
@@ -435,6 +514,8 @@ async function ensureSchemaMigrations() {
   const migrations = [
     sql`ALTER TABLE Photo ADD COLUMN kind TEXT NOT NULL DEFAULT 'photo'`,
     sql`ALTER TABLE Photo ADD COLUMN durationSec REAL`,
+    sql`ALTER TABLE Photo ADD COLUMN videoCodec TEXT`,
+    sql`ALTER TABLE Photo ADD COLUMN bytes REAL`,
   ];
   for (const m of migrations) {
     try { await db.run(m); }
@@ -501,6 +582,8 @@ async function syncFromNextcloud() {
       let exifDt: string | undefined;
       let camera = '';
       let durationSec: number | undefined;
+      let videoCodec = '';
+      const bytes = buf.length;
       // posterBuf is what sharp consumes for thumbs + LQIP. For photos it's
       // the original bytes; for videos it's a ffmpeg-extracted frame.
       let posterBuf: Buffer = buf;
@@ -514,7 +597,21 @@ async function syncFromNextcloud() {
             exifDt = meta.datetime;
             camera = meta.camera;
             durationSec = meta.durationSec;
+            videoCodec = meta.videoCodec;
             posterBuf = await extractVideoPoster(p);
+            // Re-encode HEVC → H.264 so Firefox + Chromium-on-Linux can
+            // play. H.264 sources stream directly from Nextcloud with
+            // Range; no need to duplicate them locally.
+            if (HEVC_CODECS.has(videoCodec)) {
+              try { await transcodeToH264(p, key); }
+              catch (err) {
+                console.warn(`[photos] HEVC transcode failed for ${relPath}:`, err);
+              }
+            } else {
+              // Source isn't HEVC anymore — drop any stale transcode from
+              // a previous version of the file.
+              await removeTranscoded(key);
+            }
           });
         } catch (err) {
           console.warn(`[photos] video processing failed for ${relPath}:`, err);
@@ -590,6 +687,8 @@ async function syncFromNextcloud() {
         camera: camera || null,
         kind,
         durationSec: durationSec ?? null,
+        videoCodec: videoCodec || null,
+        bytes,
         updatedAt: new Date(),
       };
       if (existing) {
@@ -653,6 +752,8 @@ function rowToView(r: any): PhotoView {
     camera: r.camera || '',
     kind,
     durationSec: typeof r.durationSec === 'number' ? r.durationSec : null,
+    videoCodec: r.videoCodec || null,
+    bytes: typeof r.bytes === 'number' ? r.bytes : null,
     favorite: !!r.favorite,
     thumbs: {
       s: `/thumbs/s/${encodeURIComponent(key)}.webp`,
@@ -789,6 +890,108 @@ export async function fetchOriginalById(
   return { buffer: data, filename: row.file, contentType };
 }
 
+/**
+ * Describes the playable bytes for a row — either the cached on-disk
+ * transcode (HEVC inputs) or the original on Nextcloud (H.264 / images).
+ * The API route uses this to decide whether to stream from disk or from
+ * WebDAV, and to know the total size for Range responses.
+ */
+export interface PlayableSource {
+  /** Suggested download filename. */
+  filename: string;
+  contentType: string;
+  /** Total bytes — needed to compute Content-Length / Content-Range. */
+  size: number;
+  /** When set, stream from this local file. */
+  localPath?: string;
+  /** When set, stream from this WebDAV path on the Nextcloud share. */
+  remotePath?: string;
+}
+
+/**
+ * Resolve the playable source for a slugified id — choosing the local
+ * transcode when present, else falling back to the original on Nextcloud.
+ * Returns null when the row doesn't exist.
+ */
+export async function getPlayableSourceById(
+  id: string,
+): Promise<PlayableSource | null> {
+  const rows = await db.select().from(PhotoTable);
+  const row = rows.find((r) => slugify(r.path) === id);
+  if (!row) return null;
+  const ext = path.extname(row.file).toLowerCase();
+
+  if (row.kind === 'video') {
+    const local = transcodedPath(row.thumbKey);
+    try {
+      const stat = await fs.stat(local);
+      if (stat.size > 0) {
+        return {
+          filename: row.file.replace(/\.(mov|MOV)$/, '.mp4'),
+          contentType: 'video/mp4',
+          size: stat.size,
+          localPath: local,
+        };
+      }
+    } catch { /* no transcode — fall through */ }
+    return {
+      filename: row.file,
+      contentType: MIME_BY_EXT[ext] || 'video/mp4',
+      size: typeof row.bytes === 'number' ? row.bytes : 0,
+      remotePath: '/' + row.path,
+    };
+  }
+
+  // Photos — keep the existing buffered path (fast + tiny). Caller can
+  // still treat this as a remote source if they want to stream.
+  return {
+    filename: row.file,
+    contentType: MIME_BY_EXT[ext] || 'application/octet-stream',
+    size: typeof row.bytes === 'number' ? row.bytes : 0,
+    remotePath: '/' + row.path,
+  };
+}
+
+/**
+ * Parse the HTTP `Range: bytes=start-end` header. Returns null when the
+ * header is missing or malformed (caller responds with 200 OK). Returns
+ * { start, end } clamped to [0, size-1] inclusive when valid.
+ */
+export function parseRange(
+  header: string | null,
+  size: number,
+): { start: number; end: number } | null {
+  if (!header || !size) return null;
+  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!m) return null;
+  let start = m[1] === '' ? NaN : parseInt(m[1], 10);
+  let end = m[2] === '' ? NaN : parseInt(m[2], 10);
+  if (Number.isNaN(start) && Number.isNaN(end)) return null;
+  if (Number.isNaN(start)) {
+    // Suffix range: last N bytes.
+    const suffix = end;
+    start = Math.max(0, size - suffix);
+    end = size - 1;
+  } else if (Number.isNaN(end)) {
+    end = size - 1;
+  }
+  if (start > end || start < 0 || end >= size) return null;
+  return { start, end };
+}
+
+/**
+ * Open a Node Readable for a slice of a Nextcloud-hosted file. The webdav
+ * library handles the `Range` request header for us; the returned stream
+ * yields just the requested bytes.
+ */
+export function openRemoteReadStream(
+  remotePath: string,
+  range?: { start: number; end: number },
+) {
+  const client = makeClient();
+  return client.createReadStream(remotePath, range ? { range } : undefined);
+}
+
 // ---------- Mutation API (used by /api/metadata) ----------
 
 /**
@@ -811,6 +1014,8 @@ export async function deletePhoto(p: string): Promise<boolean> {
     const out = path.join(THUMBS_DIR, size, `${existing.thumbKey}.webp`);
     await fs.unlink(out).catch(() => undefined);
   }
+  // Drop the cached transcode too. No-op for photos.
+  await removeTranscoded(existing.thumbKey);
   return true;
 }
 
@@ -851,6 +1056,9 @@ export async function renamePhotoFile(
       const newT = path.join(THUMBS_DIR, size, `${newKey}.webp`);
       await fs.rename(oldT, newT).catch(() => undefined);
     }
+    // Move the transcoded video cache too if it exists.
+    await fs.rename(transcodedPath(existing.thumbKey), transcodedPath(newKey))
+      .catch(() => undefined);
   }
 
   await db

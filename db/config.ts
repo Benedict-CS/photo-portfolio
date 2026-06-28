@@ -47,6 +47,10 @@ const Photo = defineTable({
     kind: column.text({ default: 'photo' }),
     /** Video duration in seconds (videos only). */
     durationSec: column.number({ optional: true }),
+    /** Source codec from ffprobe (e.g. 'hevc', 'h264'). Used to know if a video needs transcoding. */
+    videoCodec: column.text({ optional: true }),
+    /** File size in bytes — populated for both photos and videos. Used as `Content-Length` and for the Range handler. */
+    bytes: column.number({ optional: true }),
 
     /** Starred photos appear on /favorites and get a ⭐ overlay everywhere. */
     favorite: column.boolean({ default: false }),

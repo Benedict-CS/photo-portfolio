@@ -11,10 +11,10 @@ const photos = await getPhotos();
     <TopBar photos={photos} active="upload" />
     <main class="upload-main">
       <header class="upload-header">
-        <h1>Upload photos</h1>
+        <h1>Upload photos &amp; videos</h1>
         <p class="upload-sub">
-          Drag JPEGs here or pick from your camera roll. They go straight into the
-          Nextcloud share and appear in the gallery within seconds.
+          Drag JPEGs or MP4/MOV clips here, or pick from your camera roll. They go
+          straight into the Nextcloud share and appear in the gallery within seconds.
         </p>
       </header>
 
@@ -25,12 +25,12 @@ const photos = await getPhotos();
       <div class="logged-in-only">
         <label class="dropzone" id="dropzone" for="file-input">
           <div class="dropzone-icon">📤</div>
-          <div class="dropzone-title">Drop JPEGs here</div>
-          <div class="dropzone-hint">or tap to choose · max 50 MB each · up to 20 at a time</div>
+          <div class="dropzone-title">Drop photos or videos here</div>
+          <div class="dropzone-hint">or tap to choose · photos ≤ 50 MB · videos ≤ 200 MB · up to 20 at a time</div>
           <input
             id="file-input"
             type="file"
-            accept="image/jpeg,image/jpg,.jpg,.jpeg"
+            accept="image/jpeg,image/jpg,.jpg,.jpeg,video/mp4,video/quicktime,.mp4,.mov"
             multiple
             capture="environment"
             hidden
@@ -120,6 +120,14 @@ const photos = await getPhotos();
     border-radius: var(--radius-sm);
     background: #eee;
   }
+  .upload-item .video-thumb {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+    background: #2a2a2a;
+    color: white;
+  }
   .upload-item .name {
     min-width: 0;
     overflow: hidden;
@@ -207,18 +215,32 @@ const photos = await getPhotos();
 
   function addFiles(files: FileList | File[]) {
     for (const file of Array.from(files)) {
-      if (!/\.(jpe?g)$/i.test(file.name)) {
-        toast('error', `${file.name}: only JPEG accepted`);
+      if (!/\.(jpe?g|mp4|mov)$/i.test(file.name)) {
+        toast('error', `${file.name}: only JPEG / MP4 / MOV accepted`);
         continue;
       }
+      const isVideo = /\.(mp4|mov)$/i.test(file.name);
       const li = document.createElement('li');
       li.className = 'upload-item';
-      const thumb = document.createElement('img');
-      thumb.className = 'thumb';
-      thumb.alt = '';
-      const reader = new FileReader();
-      reader.onload = () => { thumb.src = reader.result as string; };
-      reader.readAsDataURL(file);
+
+      // Photos render an actual data-URI preview; videos get a generic
+      // ▶ placeholder (FileReader on a 100 MB clip would be a memory hog
+      // and the bytes aren't a valid <img src> anyway).
+      let thumb: HTMLElement;
+      if (isVideo) {
+        const div = document.createElement('div');
+        div.className = 'thumb video-thumb';
+        div.textContent = '🎬';
+        thumb = div;
+      } else {
+        const img = document.createElement('img');
+        img.className = 'thumb';
+        img.alt = '';
+        const reader = new FileReader();
+        reader.onload = () => { img.src = reader.result as string; };
+        reader.readAsDataURL(file);
+        thumb = img;
+      }
 
       const meta = document.createElement('div');
       meta.innerHTML = '';
