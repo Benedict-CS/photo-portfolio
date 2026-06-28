@@ -38,17 +38,30 @@ console.log(`Creating backup: ${outName}`);
 console.log('Including:', present.join(', '));
 
 try {
-  // PowerShell's Compress-Archive is on every Windows box; on *nix use `zip`.
+  // Capture stdout + stderr so a failure surfaces the *actual* zip error
+  // (path missing, no write perm, name too long, …) instead of just
+  // "Command failed: zip -rq …". Previously we used stdio:'inherit' which
+  // sent everything to the parent's TTY and the API caller saw nothing.
   if (process.platform === 'win32') {
     const escaped = present.map((p) => `'${p.replace(/'/g, "''")}'`).join(',');
-    execSync(`powershell -NoLogo -NoProfile -Command "Compress-Archive -Path ${escaped} -DestinationPath '${outPath}' -Force"`, { stdio: 'inherit' });
+    execSync(
+      `powershell -NoLogo -NoProfile -Command "Compress-Archive -Path ${escaped} -DestinationPath '${outPath}' -Force"`,
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
   } else {
-    execSync(`zip -rq "${outPath}" ${present.map((p) => `"${p}"`).join(' ')}`, { stdio: 'inherit' });
+    execSync(
+      `zip -rq "${outPath}" ${present.map((p) => `"${p}"`).join(' ')}`,
+      { stdio: ['ignore', 'pipe', 'pipe'] },
+    );
   }
   const size = (fs.statSync(outPath).size / 1024 / 1024).toFixed(1);
   console.log(`✓ Backup saved: ${outPath} (${size} MB)`);
 } catch (err) {
-  console.error('Backup failed:', err.message || err);
+  // execSync attaches the captured pipes on the thrown error.
+  const stderr = err?.stderr?.toString?.() || '';
+  const stdout = err?.stdout?.toString?.() || '';
+  const detail = (stderr || stdout || err?.message || String(err)).trim();
+  console.error('Backup failed:', detail);
   process.exit(1);
 }
 
