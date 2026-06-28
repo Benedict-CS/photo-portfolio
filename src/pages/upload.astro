@@ -105,7 +105,7 @@ const photos = await getPhotos();
   .upload-list:empty { display: none; }
   .upload-item {
     display: grid;
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr auto auto;
     align-items: center;
     gap: var(--space-3);
     padding: var(--space-3);
@@ -114,6 +114,30 @@ const photos = await getPhotos();
     box-shadow: var(--shadow-sm);
     font-size: var(--text-md);
   }
+  .upload-item .item-remove {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    font-size: 18px;
+    line-height: 1;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    font-family: inherit;
+    flex-shrink: 0;
+  }
+  .upload-item .item-remove:hover {
+    background: #fdf0f0;
+    color: #c93636;
+    border-color: #f0c0c0;
+  }
+  .upload-item.uploading .item-remove,
+  .upload-item.ok .item-remove { display: none; }
   .upload-item .thumb {
     width: 40px; height: 40px;
     object-fit: cover;
@@ -183,7 +207,20 @@ const photos = await getPhotos();
   // re-run it on every astro:page-load. Returns early if not on /upload.
   const TOKEN_KEY = 'photo-admin-token';
 
+  // Without this, every astro:page-load re-runs setup() and adds a SECOND
+  // set of listeners on top of the existing one — input.change ends up
+  // firing twice, the second pass sees an empty input.files (the first
+  // handler reset input.value), and its refreshUI() overwrites the queue
+  // count back to 0. Aborting the prior signal before re-binding kills
+  // the stale listeners cleanly.
+  let cleanupUpload: (() => void) | null = null;
+
   function setup() {
+    cleanupUpload?.();
+    const ac = new AbortController();
+    const signal = ac.signal;
+    cleanupUpload = () => ac.abort();
+
     const dropzone = document.getElementById('dropzone') as HTMLLabelElement | null;
     const input = document.getElementById('file-input') as HTMLInputElement | null;
     const listEl = document.getElementById('upload-list') as HTMLUListElement | null;
@@ -256,41 +293,51 @@ const photos = await getPhotos();
       status.className = 'status';
       status.textContent = 'Ready';
 
-      li.append(thumb, meta, status);
+      // Per-item remove (×) — lets the user kick a single file out of the
+      // batch without nuking the whole queue with Clear.
+      const removeBtn = document.createElement('button');
+      removeBtn.type = 'button';
+      removeBtn.className = 'item-remove';
+      removeBtn.title = 'Remove from queue';
+      removeBtn.setAttribute('aria-label', 'Remove from queue');
+      removeBtn.textContent = '×';
+
+      li.append(thumb, meta, status, removeBtn);
       listEl.appendChild(li);
       queue.push({ file, el: li, status: 'pending' });
     }
     refreshUI();
   }
 
-  // Drag-drop wiring
+  // Drag-drop wiring — every listener gets the AbortController signal so
+  // the next setup() teardown removes them.
   ['dragenter', 'dragover'].forEach((ev) =>
     dropzone.addEventListener(ev, (e) => {
       e.preventDefault();
       dropzone.classList.add('drag-over');
-    })
+    }, { signal })
   );
   ['dragleave', 'drop'].forEach((ev) =>
     dropzone.addEventListener(ev, (e) => {
       e.preventDefault();
       dropzone.classList.remove('drag-over');
-    })
+    }, { signal })
   );
   dropzone.addEventListener('drop', (e: DragEvent) => {
     if (e.dataTransfer?.files) addFiles(e.dataTransfer.files);
-  });
+  }, { signal });
 
   // File picker
   input.addEventListener('change', () => {
     if (input.files) addFiles(input.files);
     input.value = '';
-  });
+  }, { signal });
 
   clearBtn.addEventListener('click', () => {
     listEl.innerHTML = '';
     queue.length = 0;
     refreshUI();
-  });
+  }, { signal });
 
   async function uploadBatch(batch: Queued[]) {
     const token = localStorage.getItem(TOKEN_KEY) || '';
@@ -374,7 +421,19 @@ const photos = await getPhotos();
       // Upload button locked forever.
       refreshUI();
     }
-  });
+  }, { signal });
+
+  // Per-item remove. Delegated on the list so it survives DOM updates.
+  listEl.addEventListener('click', (e) => {
+    const btn = (e.target as HTMLElement).closest<HTMLButtonElement>('.item-remove');
+    if (!btn) return;
+    const li = btn.closest('li');
+    if (!li) return;
+    const idx = queue.findIndex((q) => q.el === li);
+    if (idx >= 0) queue.splice(idx, 1);
+    li.remove();
+    refreshUI();
+  }, { signal });
   } // end setup()
 
   setup();

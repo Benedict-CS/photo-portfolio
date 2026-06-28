@@ -77,6 +77,15 @@ export default defineConfig({
   output: 'server',          // SSR — API routes are alive in production too.
   adapter: node({ mode: 'standalone' }),
   integrations: [db()],
+  // Astro 5 enables an Origin-vs-Host check by default that rejects
+  // POSTs with `multipart/form-data` (browsers' default for FormData)
+  // when the request looks "cross-site". With a reverse proxy in front
+  // of the container the Host header gets rewritten but Origin doesn't,
+  // so /api/upload (FormData) was always failing with a "Cross-site
+  // form submissions are not allowed" HTML response. Our mutation
+  // endpoints are already gated by ADMIN_PASSWORD (constant-time
+  // compare) + per-IP rate limits, so this layer is redundant for us.
+  security: { checkOrigin: false },
   vite: {
     plugins: [watcherPlugin()],
     server: {

@@ -12,12 +12,20 @@ const countries = new Set(
 );
 const dates = photos.map((p) => p.datetime?.slice(0, 10) || '').filter(Boolean).sort();
 const span = dates.length ? `${dates[0].slice(0, 4)}–${dates[dates.length - 1].slice(0, 4)}` : '';
+// Pluralise the brand stats so video counts get their own callout (it's
+// way more interesting than "31 photos" hiding a single clip).
+const photoCount = photos.filter((p) => p.kind !== 'video').length;
+const videoCount = photos.filter((p) => p.kind === 'video').length;
+const countParts: string[] = [];
+if (photoCount) countParts.push(`${photoCount} photo${photoCount === 1 ? '' : 's'}`);
+if (videoCount) countParts.push(`${videoCount} video${videoCount === 1 ? '' : 's'}`);
+const countLine = countParts.join(' · ');
 ---
 <header id="topbar">
   <a class="brand" href="/">
     <span class="logo">📸</span>
     <span class="title">Photo Portfolio</span>
-    <span class="stats">{photos.length} photos · {countries.size} countries · {span}</span>
+    <span class="stats">{countLine} · {countries.size} countries · {span}</span>
   </a>
   <nav>
     <a href="/" class={active === 'map' ? 'active' : ''} title="Map">
